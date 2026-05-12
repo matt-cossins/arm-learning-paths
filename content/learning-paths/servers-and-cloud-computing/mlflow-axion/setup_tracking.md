@@ -1,27 +1,22 @@
 ---
-title: Deploy MLflow on GCP SUSE Arm64 (Setup & Tracking)
+title: Install MLflow and track machine learning experiments
 weight: 5
 
 ### FIXED, DO NOT MODIFY
 layout: learningpathall
 ---
 
-## Deploy MLflow on GCP SUSE Arm64
+## Install and configure MLflow on SUSE Linux
 
-In this section, you install MLflow on a GCP Arm64 (Axion) virtual machine running SUSE Linux with Python 3.11, start the MLflow tracking server, and run machine learning experiments.
+In this section, you'll install MLflow on a GCP Arm64 (Axion) virtual machine (VM) running SUSE Linux with Python 3.11. You'll then start the MLflow tracking server and run machine learning experiments.
 
-## Terminal usage
-
-This Learning Path uses two terminals throughout:
-
-- **Terminal A** → For setup, training, and running commands
-- **Terminal B** → For running the MLflow tracking server (keep this running)
+You'll be using one terminal (terminal A) for setup, training, and running commands. You'll use another terminal (terminal B) to run the MLflow tracking server.
 
 Open both terminals connected to the VM before starting.
 
 ## Connect to the VM
 
-Open **Terminal A** and connect:
+Connect to the VM using terminal A:
 
 ```bash
 ssh <your-user>@<your-vm-ip>
@@ -80,14 +75,9 @@ sudo zypper install -y \
   git
 ```
 
-**What these do:**
+`python311` is the Python 3.11 runtime. `sqlite3` is for the MLflow database. `gcc`, `gcc-c++`, and `make` are used as build tools. `python311-pip` is used to install Python packages. 
 
-- python311 → Python 3.11 runtime
-- pip → install Python packages
-- gcc/g++/make → build tools
-- sqlite3 → MLflow database
-
-**Verify:**
+Verify:
 
 ```bash
 python3.11 --version
@@ -141,7 +131,7 @@ mkdir -p backend artifacts demo
 
 ## Start MLflow server
 
-**Now open Terminal B and run:**
+Use terminal B to run:
 
 ```bash
 ssh <your-user>@<your-vm-ip>
@@ -149,15 +139,13 @@ cd ~/mlflow-learning-path
 source mlflow-env/bin/activate
 ```
 
-**Start MLflow server:**
-
-This command starts the MLflow tracking server and keeps it running in Terminal B. The key flags configure how it binds to the network and where it stores data:
+After that, run the following command to start the MLflow tracking server and keep it running. The following key flags configure how the server binds to the network and where it stores data:
 
 - `--host 0.0.0.0` — listens on all network interfaces so the UI is reachable from your browser via the VM's public IP
 - `--port 5000` — serves the tracking UI and REST API on port 5000
 - `--backend-store-uri` — stores experiment metadata (parameters, metrics, run IDs) in a local SQLite database
 - `--artifacts-destination` — stores model files and other artifacts on the local filesystem
-- `--allowed-hosts "*"` and `--cors-allowed-origins "*"` — permit connections from any origin; suitable for this tutorial but not for production deployments
+- `--allowed-hosts "*"` and `--cors-allowed-origins "*"` — permit connections from any origin; suitable for this Learning Path but not for production deployments
 
 ```bash
 mlflow server \
@@ -190,7 +178,7 @@ The output is similar to:
 2026/05/04 13:33:47 INFO mlflow.server.jobs.utils: Registered online_scoring_scheduler periodic task (runs every 1 minute)
 ```
 
-Leave Terminal B running. The server must stay active throughout the rest of this Learning Path.
+Leave terminal B open and don't run any commands on it. The server must stay running throughout the rest of this Learning Path.
 
 ## Access MLflow UI
 
@@ -200,13 +188,13 @@ Open a browser and navigate to:
 http://<VM-IP>:5000
 ```
 
-![MLflow UI Home Screen#center](images/mlflow-ui.png "MLflow UI Home Page")
+![MLflow UI landing page showing Experiments and Models tabs in the top navigation bar with an empty experiments list below#center](images/mlflow-ui.png "MLflow UI landing page after first launch")
 
 Select the **Experiments** tab to see tracked runs, compare metrics across runs, and inspect logged parameters.
 
-## Create training script
+## Create a machine learning training script
 
-In **Terminal A**, navigate to the demo directory and create the training script:
+In the first terminal, navigate to the demo directory and create the training script:
 
 ```bash
 cd ~/mlflow-learning-path/demo
@@ -250,13 +238,9 @@ with mlflow.start_run():
 EOF
 ```
 
-This script:
+This script trains a logistic regression model on the Iris dataset. It logs the `C` parameter and accuracy metric to MLflow Tracking, and registers the trained model in the MLflow Model Registry under the name `iris-model`.
 
-- trains a logistic regression model on the Iris dataset
-- logs the `C` parameter and accuracy metric to MLflow Tracking
-- registers the trained model in the MLflow Model Registry under the name `iris-model`
-
-## Run experiments
+## Run machine learning experiments with MLflow
 
 Set the tracking URI so the MLflow client sends data to Terminal B's server:
 
@@ -264,9 +248,7 @@ Set the tracking URI so the MLflow client sends data to Terminal B's server:
 export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
 ```
 
-**Run experiments:**
-
-The `C` argument in `train.py` is the inverse regularization strength in logistic regression. A lower value of `C` applies stronger regularization, which can reduce overfitting. Running with different `C` values simulates a hyperparameter sweep — each run is tracked separately in MLflow so you can compare results:
+The `C` argument in `train.py` is the inverse regularization strength in logistic regression. A lower value of `C` applies stronger regularization, which can reduce overfitting. Running with different `C` values simulates a hyperparameter sweep. Each run is tracked separately in MLflow so you can compare results:
 
 ```bash
 python train.py
@@ -278,7 +260,7 @@ python train.py
 
 Each run logs the `C` value and accuracy as a separate entry in the `iris-exp` experiment and registers a new model version in the MLflow Model Registry.
 
-The output is similar to:
+The output for the first run is similar to:
 
 ```output
 Registered model 'iris-model' already exists. Creating a new version of this model...
@@ -308,20 +290,16 @@ Accuracy: 1.0
 🧪 View experiment at: http://127.0.0.1:5000/#/experiments/1
 ```
 
-## Verify results in the MLflow UI
+Each subsequent run creates a new model version and logs its accuracy metric.
+
+## View experiment results in the MLflow UI
 
 In the MLflow UI at `http://<VM-IP>:5000`, go to the **Experiments** tab, select **iris-exp**, and open the **Runs** view. You should see three runs with their `C` parameter values and accuracy metrics. Select the **Models** tab to see the three registered model versions.
 
-![MLflow Runs View showing experiments and metrics#center](images/mlflow-runs.png "MLflow Runs showing experiment tracking")
+![MLflow Experiments page showing iris-exp experiment with three completed runs, displaying the C parameter values and accuracy metrics for each run in a table view#center](images/mlflow-runs.png "MLflow Runs view showing three tracked experiments with different C values")
 
-## What you've learned
+## What you've accomplished and what's next
 
-You have successfully:
+You've now successfully installed MLflow on SUSE ARM64 and configured a Python 3.11 environment. You've started an MLflow tracking server, logged experiments and metrics, and registered models.
 
-- Installed MLflow on SUSE ARM64
-- Configured Python 3.11 environment
-- Started MLflow tracking server
-- Logged experiments and metrics
-- Registered models
-
-Next, you will deploy and serve the model.
+Next, you'll deploy and serve the model.
