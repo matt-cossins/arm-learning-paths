@@ -146,7 +146,7 @@ This keeps your pipeline topology identical to CPU mode. The only functional cha
 ./tools/amp-menu 06-custom-detector-hailo
 ```
 
-Open `http://localhost:9999` to verify. You should see the same as previously, now running on the Hailo accelerator. Enable the performance overlay to observe differences in performance between CPU and Accelerator mode.
+Open `http://127.0.0.1:9999` to verify. You should see the same as previously, now running on the Hailo accelerator. Enable the performance overlay to observe differences in performance between CPU and Accelerator mode.
 
 ## What you've learned and what's next
 

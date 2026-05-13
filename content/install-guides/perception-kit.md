@@ -177,7 +177,7 @@ git clone https://github.com/Arm-Debug/amp-dev-forge.git
 cd amp-dev-forge
 ```
 
-After cloning the repository, open the `amp-dev-forge` folder in VS Code. It is important you open this specific directory for the following steps to work.
+After cloning the repository, go to `File - Open Folder` and select the `amp-dev-forge` folder to open it in VSCode. It is important you open this specific directory for the following steps to work.
 
 Open the Command Palette with `Cmd + Shift + P` or `Ctrl + Shift + P`, depending on macOS vs Linux / WSL.
 
@@ -189,7 +189,7 @@ You will be presented with several container options. For development work direc
 
 ![Screenshot of Container Options in Command Palette #center](/install-guides/_images/container_opts.png "Container Options")
 
-Wait until this completes - it may take some time. Once completed, your terminal in VS Code should appear as follows:
+Wait until this completes - it may take some time. Once completed, open your terminal in VS Code and it should appear as follows:
 
 ```output
 ╔═════════════════════════════════════════════════════════════════════════════╗
@@ -240,7 +240,7 @@ Choose `01-full-onnx`
 
 ![Screenshot of pipeline options in Command Palette #center](/install-guides/_images/pipeline_opts.png "Pipeline Options")
 
-Navigate to `http://localhost:9999` on your browser (Microsoft Edge and Firefox are recommended).
+Navigate to `http://127.0.0.1:9999` on the browser on your development machine (Microsoft Edge and Firefox are recommended).
 
 You should see a WebRTC view showing a static image. You have the option to enable/disable AI models and view their inference overlaid on the image.
 

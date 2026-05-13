@@ -188,7 +188,7 @@ Once you have saved your pipeline, you can now run inference in the terminal, or
 ./tools/amp-menu 05-custom-detector
 ```
 
-Navigate to `http://localhost:9999` and you should now see your model (custom detector) as the only AI model option, and object detection being performed in the overlay.
+Navigate to `http://127.0.0.1:9999` and you should now see your model (custom detector) as the only AI model option, and object detection being performed in the overlay.
 
 ![Screenshot of the ampsink WebRTC page showing custom pipeline with YOLOv8n Object Detection#center](Object_Detection.png "WebRTC page showing YOLOv8n Object Detection")
 

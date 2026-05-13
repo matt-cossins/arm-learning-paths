@@ -8,7 +8,7 @@ layout: learningpathall
 
 ## What you will build
 
-This Learning Path shows you how to move from demo pipelines in the Arm Perception Pipeline Kit to a custom vision AI inference pipeline, integrated with a basic Python application. The workflow is short and practical so you can quickly adapt it to your own data source, model, and output requirements on Arm-based edge devices.
+This learning path shows you how to move from demo pipelines in the Arm Perception Pipeline Kit to a custom vision AI inference pipeline, integrated with a basic Python application. The workflow is short and practical so you can quickly adapt it to your own data source, model, and output requirements on Arm-based edge devices.
 
 The benefit of the kit is that it supports multiple runtimes, and can work across both CPU, and Hailo accelerators. There are many application use-cases for which a perception inference pipeline is required. 
 
@@ -18,18 +18,7 @@ For example:
 - Live written text transcription
 - Robotics requiring perception and object detection
 
-With the Arm Perception Pipeline Kit, the inference pipeline is handled for you - requiring just a simple stringing together of pipeline stages in a repeatable template, with minimal changes across models. You are then free to build an application around this pipeline.
-
-In this learning path, you will build a custom pipeline JSON that links together:
-
-- A video source and color conversion stage in GStreamer.
-- An `ampinfer` element that points to your model opchain.
-- Optional tracking and overlay elements.
-- A sink to display or route inference output.
-
-You will run your custom pipeline with `amp-menu` and verify that inference starts correctly.
-
-You will then create a simple Python application that leverages your pipeline.
+With the Arm Perception Pipeline Kit, the inference pipeline is handled for you, with GStreamer and runtime integration - requiring just a simple stringing together of abstracted pipeline stages in a repeatable template, with minimal changes across models. You are then free to build an application around this pipeline.
 
 This learning path will focus on CPU inference on the Raspberry Pi 5, with optional extension to move inference onto an AI Hat accelerator. Much of the process is also transferable across other Linux, WSL, or macOS devices.
 
@@ -49,7 +38,7 @@ You will be presented with several container options. For Raspberry Pi 5, select
 
 ![Screenshot of Container Options in Command Palette #center](/container_opts.png "Container Options")
 
-Wait until this completes - it may take some time. Once completed, your terminal in VS Code should appear as follows:
+Wait until this completes - it may take some time. Once completed, open your terminal in VS Code and it should appear as follows:
 
 ```output
 ╔═════════════════════════════════════════════════════════════════════════════╗
@@ -112,7 +101,7 @@ View the menu of demo pipelines and select a demo when prompted:
 
 ### Result
 
-Once you have run the demo pipeline, navigate to `http://localhost:9999` on your browser (Microsoft Edge and Firefox are recommended).
+Once you have run the demo pipeline, navigate to `http://127.0.0.1:9999` on your browser (Microsoft Edge and Firefox are recommended).
 
 You should see a WebRTC view showing a static image. You have the option to enable/disable AI models and view their inference overlaid on the image.
 

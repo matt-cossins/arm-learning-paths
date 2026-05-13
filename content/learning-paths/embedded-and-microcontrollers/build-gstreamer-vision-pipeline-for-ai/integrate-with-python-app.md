@@ -19,9 +19,9 @@ For sink choice, you have two valid modes:
 - `ampsink`: useful during debugging because you can visually inspect what the pipeline is seeing.
 - `fakesink`: may be preferred for final programmatic inference because it removes rendering and browser-output overhead, keeps the pipeline simpler, and focuses compute on inference plus event generation.
 
-In this step, the provided JSON defaults to `fakesink` with `ampcomm`. However you can change this to `ampsink` for debugging.
+`amposd` controls on-frame overlays such as boxes and labels. Keep it enabled when you need visual debugging. Disable it when you only need programmatic events and want a cleaner, lower-overhead path.
 
-`amposd` controls on-frame overlays such as boxes and labels. Keep it enabled when you need visual debugging. Disable it when you only need programmatic events and want a cleaner, lower-overhead path. Again it is disabled here as it is not required for the app, but can be enabled easily for debugging.
+In this step, the provided JSON defaults to `fakesink` with no `amposd` overlay. However you can easily change this to `ampsink` with or without an `amposd` for debugging.
 
 Run this command to overwrite `/work/config/pipelines/05-custom-detector.json` for programmatic output:
 
@@ -48,10 +48,10 @@ Run a dry run to confirm the pipeline expands correctly:
 ./tools/amp-menu -p 05-custom-detector
 ```
 
-Your output should appear as follows:
+Your output should appear as follows, with any differences due to changes you have made (i.e. camera device, `ampsink` vs `fakesink`, `amposd` enabled or disabled, etc.)
 
 ```output
-INSERT OUTPUT HERE - TODO
+gst-launch-1.0 v4l2src device=/dev/video0 ! videoconvert ! video/x-raw,format=BGRA ! ampinfer opchain-path=/work/config/models/custom-detector/opchain.json active=true ! amptracker content-type=genericObject ! amposd enabled=false ! ampcomm method=file file-name=/work/data/output/custom-detector.ndjson ! fakesink sync=false 
 ```
 
 ## Create a FastAPI dashboard app
@@ -69,7 +69,7 @@ Create the app in `/work/apps` using one command. The app does six things:
 - Tracks frame-level label presence and keeps recent detections for visibility.
 - Applies an misplaced-item policy rule with hold-time behavior.
 - Exposes a right-zone status indicator and policy alerts.
-- Serves a live dashboard at `http://localhost:8010` by default.
+- Serves a live dashboard at `http://127.0.0.1:8010` by default.
 
 This rule is an intentionally simple example: if a `cup` remains in a right-side "misplaced" zone for a short hold period, an alert is created. When the `cup` is either removed from the frame or moved onto the left-side "approved" zone, the alert is removed. The same pattern can be adapted and extended to restricted-zone monitoring, occupancy thresholds, or other production policies.
 
@@ -477,7 +477,7 @@ Run the app as you would normally run a python script:
 python3 /work/apps/pipeline_dashboard.py
 ```
 
-Then open `http://localhost:8010` in your browser to view your basic app.
+Then open `http://127.0.0.1:8010` in your browser to view your basic app.
 
 When the cup is on the right-hand side (misplaced zone), the dashboard status should turn red and show the active policy condition.
 
