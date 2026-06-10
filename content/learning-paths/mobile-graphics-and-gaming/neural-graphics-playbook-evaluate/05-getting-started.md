@@ -22,7 +22,7 @@ Test it in a representative scene, observe how it behaves with your content, and
 
 ## NSSD
 
-Getting started with NSSD requires a different kind of effort. There isn't a plug-and-play path today. NSSD—especially in combination with MegaLights—requires deeper integration into the rendering pipeline, including modifications to Unreal Engine itself.
+Getting started with NSSD requires a different kind of effort. There isn't a plug-and-play path today. NSSD — especially in combination with MegaLights — requires deeper integration into the rendering pipeline, including modifications to Unreal Engine itself.
 
 For more detail on what this looks like in practice, see the following blog, which describes the approach to lighting at scale and how NSSD fits into that setup:
 
