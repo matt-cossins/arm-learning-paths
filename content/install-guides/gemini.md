@@ -1,5 +1,6 @@
 ---
 title: Gemini CLI
+description: Install Gemini CLI on macOS or Arm Linux and configure authentication so you can use Google's command-line AI assistant for development tasks.
 
 author: Jason Andrews
 minutes_to_complete: 15
@@ -172,6 +173,7 @@ Download and run the Node.js 20.x setup script:
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
 ```
 
 Verify Node.js is installed correctly:

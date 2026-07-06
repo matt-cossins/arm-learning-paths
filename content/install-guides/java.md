@@ -1,5 +1,6 @@
 ---
 title: Java
+description: Install Java runtimes and development kits on Arm Linux using package managers, Snap, or vendor distributions for Java application development.
 author: Jason Andrews
 minutes_to_complete: 15
 official_docs: https://docs.oracle.com/en/java/
@@ -406,5 +407,6 @@ INFO: Created user preferences directory.
 
 Copyright (c) 1999-2024 The Apache Software Foundation
 ```
+## Next steps
 
-You are now ready to use Java on your Arm Linux system. 
+You are now ready to use Java on your Arm Linux system. You can explore Learning Paths for working with Java on Arm, such as [Run Java applications on Google Axion processors](/learning-paths/servers-and-cloud-computing/java-on-axion/) and [Tune the performance of the Java garbage collector](/learning-paths/servers-and-cloud-computing/java-gc-tuning/). 

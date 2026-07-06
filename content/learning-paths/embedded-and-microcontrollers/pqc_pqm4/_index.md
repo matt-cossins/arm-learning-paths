@@ -1,10 +1,6 @@
 ---
 title: Implement post-quantum cryptography on Arm Cortex-M4
 
-draft: true
-cascade:
-    draft: true
-    
 description: Learn how to implement and test post-quantum cryptographic algorithms on Arm Cortex-M4 microcontrollers using the pqm4 library.
 
 minutes_to_complete: 120
@@ -20,12 +16,16 @@ learning_objectives:
 
 prerequisites:
     - Computer with Python 3.8 or higher
-    - Install the [Arm GNU Toolchain](/install-guides/gcc/arm-gnu/)
+    - Arm GNU Toolchain [installed](/install-guides/gcc/arm-gnu/)
     - An Arm Cortex-M4 development board such as NUCLEO-L4R5ZI, NUCLEO-L476RG, or STM32F4 Discovery, with stlink or OpenOCD for flashing. Alternatively, install QEMU to simulate the hardware without a physical board.
 
 author: 
     - Akash Malik
     - Odin Shen
+
+generate_summary_faq: true
+rerun_summary: false
+rerun_faqs: false
 
 ### Tags
 skilllevels: Advanced
