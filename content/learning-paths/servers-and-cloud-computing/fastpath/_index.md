@@ -25,8 +25,8 @@ rerun_faqs: false
 ### Tags
 skilllevels: Advanced
 subjects: Performance and Architecture
-cloud_service_providers:
-  - AWS
+platforms:
+  - AWS Graviton
 armips:
     - Neoverse
 operatingsystems:

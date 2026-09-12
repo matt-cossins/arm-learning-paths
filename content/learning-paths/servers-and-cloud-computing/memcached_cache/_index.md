@@ -31,10 +31,10 @@ test_maintenance: true
 ### Tags
 skilllevels: Advanced
 subjects: Web
-cloud_service_providers:
-  - AWS
-  - Microsoft Azure
-  - Google Cloud
+platforms:
+  - AWS Graviton
+  - Microsoft Azure Cobalt
+  - Google Axion
 armips:
 - Neoverse
 tools_software_languages:

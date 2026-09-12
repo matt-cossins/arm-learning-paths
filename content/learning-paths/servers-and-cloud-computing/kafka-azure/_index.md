@@ -26,8 +26,8 @@ rerun_faqs: false
 ### Tags
 skilllevels: Advanced
 subjects: Storage
-cloud_service_providers:
-  - Microsoft Azure
+platforms:
+  - Microsoft Azure Cobalt
 
 armips:
     - Neoverse

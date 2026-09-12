@@ -26,9 +26,9 @@ rerun_faqs: false
 ### Tags
 skilllevels: Advanced
 subjects: Storage
-cloud_service_providers:
-  - AWS
-  - Google Cloud
+platforms:
+  - AWS Graviton
+  - Google Axion
 armips:
     - Neoverse
 operatingsystems:

@@ -26,8 +26,8 @@ skilllevels: Advanced
 armips:
     - Neoverse
 subjects: ML
-cloud_service_providers:
-  - Microsoft Azure
+platforms:
+  - Microsoft Azure Cobalt
 operatingsystems:
     - Linux
 tools_software_languages:

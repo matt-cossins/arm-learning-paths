@@ -26,8 +26,8 @@ rerun_faqs: false
 ### Tags
 skilllevels: Introductory
 subjects: ML
-cloud_service_providers:
-  - AWS
+platforms:
+  - AWS Graviton
 armips:
     - Neoverse
 operatingsystems:
