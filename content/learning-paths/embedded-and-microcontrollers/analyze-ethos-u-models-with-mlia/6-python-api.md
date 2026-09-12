@@ -1,5 +1,7 @@
 ---
-title: Use the Python API
+title: (Optional) Use the Python API
+
+description: Use the optional MLIA Python API to run compatibility checks, compare LiteRT models, and discover targets and backends programmatically.
 
 weight: 7
 
@@ -9,15 +11,15 @@ layout: "learningpathall"
 
 ## Use the API after the CLI
 
-The MLIA CLI is the primary workflow for this Learning Path. It is the best way to learn the tool, inspect output, and debug your environment.
+This section is optional. The MLIA CLI is the primary workflow for this Learning Path, and it is the best way to learn the tool, inspect output, and debug your environment.
 
 Use the Python API when you want another product, dashboard, workflow runner, or CI system to integrate MLIA.
 
-The `mlia` Python package exposes the same advisor functionality used by the CLI. In this section, you use `run_advisor()` as the main API entry point, and helper functions such as `list_targets()`, `list_target_profiles()`, and `list_backends()` to discover what the installed environment supports.
+The `mlia` Python package exposes the same advisor functionality used by the CLI. If you continue, you use `run_advisor()` as the main API entry point, and helper functions such as `list_targets()`, `list_target_profiles()`, and `list_backends()` to discover what the installed environment supports.
 
 ## Run MLIA from Python and compare two models
 
-This example shows using the API to analyze two TFLite model variants, and then printing results and advice:
+This example shows using the API to analyze two LiteRT model variants, and then printing results and advice:
 
 ```bash
 cat > compare_mlia_models.py <<'PY'
@@ -91,5 +93,3 @@ Use discovery in integrations so your product can report what the current enviro
 ## What you have learned
 
 You have used the Python API to run the same kind of analysis you performed from the CLI. You have also seen how to compare model variants programmatically and why the API is useful for product integration or automation.
-
-Next, review where to go from here.

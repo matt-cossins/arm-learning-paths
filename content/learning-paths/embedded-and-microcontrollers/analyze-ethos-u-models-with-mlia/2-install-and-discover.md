@@ -1,6 +1,8 @@
 ---
 title: Install MLIA and discover capabilities
 
+description: Install the MLIA Ethos-U plugin, inspect target profiles and backends, and download the model artifacts used in the analysis examples.
+
 weight: 3
 
 ### FIXED, DO NOT MODIFY
@@ -28,7 +30,7 @@ sudo apt install -y git-lfs
 
 ## Create a Python environment
 
-Create a virtual environment so the MLIA packages do not conflict with any existing PyTorch, ExecuTorch, or TensorFlow environment.
+Create a virtual environment so the MLIA packages do not conflict with any existing ML framework environment.
 
 ```bash
 python3 -m venv mlia_env
@@ -37,10 +39,6 @@ python -m pip install --upgrade pip
 ```
 
 ## Install MLIA
-
-{{% notice TODO %}}
-Confirm installation
-{{% /notice %}}
 
 MLIA uses plugins. The examples in this Learning Path use Ethos-U as the target, so install the Ethos-U plugin package:
 
@@ -106,7 +104,7 @@ Backends perform the work behind an MLIA analysis flow. List available and insta
 mlia backend list
 ```
 
-For this Ethos-U demonstration, you should expect Vela and Corstone backend options. Vela is used for compiler-oriented compatibility and performance analysis. Corstone backends are used for simulation-oriented performance flows, including supported ExecuTorch `.pte` workloads.
+For this Ethos-U demonstration, you should expect Vela and Corstone backend options. Vela is used for compiler-oriented compatibility and performance analysis, including per-operator performance estimates for supported formats. Corstone backends are used for simulation-oriented performance flows, including supported ExecuTorch `.pte` workloads, and report model-wide NPU counters.
 
 ```output
 Name          Installed  Installable
@@ -116,19 +114,7 @@ corstone-320  no         yes
 vela          no         yes
 ```
 
-Install Vela:
-
-```bash
-mlia backend install vela
-```
-
-Check the backend list again:
-
-```bash
-mlia backend list
-```
-
-You should now see `vela` in the installed backend list.
+When we later use `mlia check`, any missing backends required by your target will be installed.
 
 ## Clone model artifacts
 
@@ -138,9 +124,9 @@ This Learning Path uses prebuilt artifacts from the Arm ML model artifacts repos
 git lfs install
 git clone --filter=blob:none --sparse https://github.com/arm-education/ml-model-artifacts.git
 cd ml-model-artifacts
-git sparse-checkout set pt2 pte tflite tosa
+git sparse-checkout set pte tflite tosa
 git lfs pull \
-  --include="pt2/toy_conditional_select_fp32.pt2,pte/toy_conditional_select_int8_ethos_u55_256.pte,pte/toy_conditional_select_int8_ethos_u85_256.pte,tflite/mv2_fp32.tflite,tflite/mv2_int8.tflite,tosa/mv2_fp32.tosa,tosa/mv2_int8.tosa" \
+  --include="pte/toy_conditional_select_int8_ethos_u55_256.pte,pte/toy_conditional_select_int8_ethos_u85_256.pte,tflite/mv2_fp32.tflite,tflite/mv2_int8.tflite,tosa/mv2_fp32.tosa,tosa/mv2_int8.tosa" \
   --exclude=""
 git lfs checkout
 ```
@@ -170,8 +156,6 @@ ml-model-artifacts/
 ├── pte/
 │   ├── toy_conditional_select_int8_ethos_u55_256.pte
 │   └── toy_conditional_select_int8_ethos_u85_256.pte
-├── pt2/
-│   └── toy_conditional_select_fp32.pt2
 ├── tflite/
 │   ├── mv2_fp32.tflite
 │   └── mv2_int8.tflite
@@ -182,6 +166,6 @@ ml-model-artifacts/
 
 ## What you have learned
 
-You have installed MLIA, along with the Ethos-U plugin, discovered available target profiles and backends from the CLI, installed Vela, and cloned model artifacts for analysis.
+You have installed MLIA, along with the Ethos-U plugin, discovered available target profiles and backends from the CLI, and cloned model artifacts for analysis.
 
 Next, you will run your first MLIA compatibility and performance checks.

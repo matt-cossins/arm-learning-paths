@@ -1,5 +1,5 @@
 ---
-title: Analyze ML models with Arm ML Inference Advisor
+title: Analyze ML models with Arm ML Inference Advisor (MLIA)
 
 description: Learn how to use Arm ML Inference Advisor from the command line to check model compatibility, estimate performance, and identify target-aware model improvement opportunities using Ethos-U as the example target.
 
@@ -8,12 +8,10 @@ minutes_to_complete: 45
 who_is_this_for: This Learning Path is for ML developers who want to use Arm's ML Inference Advisor (MLIA) to evaluate whether a model is suitable for a target before moving into deployment, graph inspection, or runtime profiling.
 
 learning_objectives:
-  - Explain what MLIA does and where it fits in model preparation
-  - Use the MLIA CLI to discover targets, target profiles, and backends
-  - Run compatibility and performance analysis on model artifacts
-  - Interpret MLIA JSON output, metrics, unavailable fields, and advice
-  - Compare how TOSA, TensorFlow Lite, and ExecuTorch artifacts enter MLIA workflows
-  - Understand how to use the MLIA Python API to integrate MLIA with other tools and workflows.
+  - Use the MLIA CLI to discover target profiles and backends
+  - Run compatibility and performance analysis on LiteRT, TOSA, and ExecuTorch artifacts
+  - Interpret MLIA JSON output, advice, Vela estimates, and Corstone model-wide NPU counters
+  - (Optional) Call the MLIA Python API from automation or other tools
 
 prerequisites:
   - Ubuntu 22.04 LTS or another compatible Linux environment
@@ -24,6 +22,10 @@ prerequisites:
 
 author:
   - Matt Cossins
+
+generate_summary_faq: true
+rerun_summary: false
+rerun_faqs: false
 
 ### Tags
 skilllevels: Introductory
@@ -39,10 +41,9 @@ tools_software_languages:
   - MLIA
   - Vela
   - ExecuTorch
-  - PyTorch
   - Python
   - TOSA
-  - TensorFlow Lite
+  - LiteRT
 
 further_reading:
   - resource:
@@ -52,10 +53,6 @@ further_reading:
   - resource:
       title: MLIA Ethos-U Plugin
       link: https://github.com/arm/mlia-ethos-u
-      type: repository
-  - resource:
-      title: MLIA PyTorch Converter Plugin
-      link: https://github.com/arm/mlia-converters-pytorch
       type: repository
   - resource:
       title: Arm ML model artifacts
