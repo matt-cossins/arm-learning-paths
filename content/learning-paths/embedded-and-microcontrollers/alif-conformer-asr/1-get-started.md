@@ -8,49 +8,103 @@ layout: "learningpathall"
 
 ## What is automatic speech recognition?
 
-Automatic speech recognition (ASR) converts speech audio into text. The application you run first reads fixed 16 kHz audio, converts the samples into Mel spectrogram features, runs a Conformer model, and decodes the output tokens into text.
+Automatic speech recognition (ASR) converts speech audio into text. The application you will run reads fixed 16 kHz audio, converts the samples into Mel spectrogram features, runs a Conformer model, and decodes the output tokens into text.
 
 [Conformer](https://github.com/sooftware/conformer/) is a transformer-based neural network architecture used for speech tasks. It combines attention layers, which help the model use context from different parts of an utterance, with convolution layers, which help capture local audio patterns.
 
-The Conformer model in this flow does not take raw audio directly. Preprocessing code creates an 80-bin Mel spectrogram using a 512-sample window and 160-sample hop. The postprocessing code then removes repeated tokens and maps token IDs to text using the SentencePiece vocabulary.
+The Conformer model in this flow does not take raw audio directly. The preprocessing code creates an 80-bin Mel spectrogram using a 512-sample window and 160-sample hop. The postprocessing code then removes repeated tokens and maps token IDs to text using the SentencePiece vocabulary.
 
-The SentencePiece vocabulary is the token list used by the decoder. The model outputs token IDs, not finished words, and the vocabulary maps each ID to a text piece such as a letter, word fragment, or word-start marker.
+The [SentencePiece vocabulary](https://github.com/google/sentencepiece/blob/master/README.md#what-is-sentencepiece) is the token list used by the decoder. The model outputs token IDs, not finished words, and the vocabulary maps each ID to a text piece such as a letter, word fragment, or word-start marker.
 
-## The ML Embedded Evaluation Kit
+## The ML Evaluation Kit
 
-The ML Embedded Evaluation Kit (MLEK) is a set of embedded machine learning examples, build scripts, model resources, and deployment flows for Arm-based microcontroller systems. 
+The Machine Learning Evaluation Kit (MLEK) is a set of embedded machine learning examples, build scripts, model resources, and deployment flows for Arm-based microcontroller systems. In this section, you will review the ASR and MLEK flow, clone the Arm MLEK repository, initialize submodules, and run the ExecuTorch resource setup script that prepares the Conformer model assets.
 
 Ethos-U85 is an Arm NPU for accelerating neural networks in high-performance microcontroller designs, and is a primary target for the MLEK. Conformer is a good fit for this target because ASR depends on both local sound patterns and longer-range speech context. In this flow, the model is exported as an ExecuTorch `.pte` file so supported operations can run on the Ethos-U85 NPU instead of only on the Cortex-M CPU.
 
-Before using the physical Alif E8 DevKit, you run the ASR application on the Corstone-320 Fixed Virtual Platform (FVP). An FVP is a software model of an Arm system that can run the same baremetal firmware you later port and deploy to hardware. Corstone-320 includes an Ethos-U85 target, so you can prototype and debug the model, runtime, and application flow before porting the application to the Alif board.
+Before using the physical Alif E8 DevKit, you will run the ASR application on the [Corstone-320 Fixed Virtual Platform (FVP)](https://support.arm.com/documentation/109760/0000/SSE-320-FVP). An FVP is a software model of an Arm system that can run the same baremetal firmware you later port and deploy to hardware. Corstone-320 includes an Ethos-U85 target, so you can prototype and debug the model, runtime, and application flow before porting the application to the Alif board.
 
-## What you'll do in this section
+## Prepare your development host
 
-You will review the ASR and MLEK flow, clone the Arm MLEK repository, initialize submodules, and run the ExecuTorch resource setup script that prepares the Conformer model assets.
+{{% notice Important %}}
+Use Linux on an x86_64 or aarch64 host, or use an **Apple Silicon Mac** running macOS 15 or later. 
+
+The commands have not been validated on native Windows. WSL with USB passthrough can work with the E8 DevKit, but that configuration is outside the scope of this Learning Path.
+{{% /notice %}}
+
+MLEK requires Python 3.10, 3.11, or 3.12. Install the host packages for your operating system. The macOS commands assume you have already installed [Homebrew](https://brew.sh/).
+
+{{< tabpane code=true >}}
+  {{< tab header="Ubuntu Linux" language="bash">}}
+sudo apt update
+sudo apt install -y \
+  build-essential \
+  git \
+  ninja-build \
+  python3 \
+  python3-dev \
+  python3-pip \
+  python3-venv \
+  unzip \
+  curl \
+  libsndfile1
+  {{< /tab >}}
+  {{< tab header="macOS" language="bash">}}
+xcode-select --install
+brew install git python@3.12 libsndfile
+alias python3=/opt/homebrew/bin/python3.12
+  {{< /tab >}}
+{{< /tabpane >}}
+
+Install the `arm-none-eabi` distribution of the [Arm GNU Toolchain](/install-guides/gcc/arm-gnu/). The compiler must be version 13.2.1 or later for Cortex-M85; Arm GNU Toolchain 14.2.Rel1 is the version used by the pinned MLEK Docker environment.
+
+Verify the host and toolchain:
+
+```bash
+python3 --version
+make --version
+arm-none-eabi-gcc --version
+```
 
 ## Clone the Arm MLEK repository
 
 Clone the Arm ML Embedded Evaluation Kit repository:
 
 ```bash
+cd "$HOME"
 git clone https://gitlab.arm.com/artificial-intelligence/ethos-u/ml-embedded-evaluation-kit.git
 cd ml-embedded-evaluation-kit
+git checkout f2f6247a672794ecf9df0216d14c3a5c324537dd
 git submodule update --init --recursive
 ```
 
-{{% notice AUTHOR TODO %}}
-This draft uses Arm MLEK commit `f2f6247a672794ecf9df0216d14c3a5c324537dd`. Before publication, consider pinning a commit if the generated model names or FVP build commands need to remain stable.
-{{% /notice %}}
-
 ## Set up ExecuTorch resources
 
-Run the setup script with ExecuTorch enabled:
+Run the setup script with ExecuTorch enabled. Selecting only the `asr` use case avoids generating resources for unrelated MLEK examples.
+
+{{< tabpane code=true >}}
+  {{< tab header="Ubuntu Linux" language="bash">}}
+python3 set_up_default_resources.py \
+  --parallel "$(nproc)" \
+  --ml-frameworks executorch \
+  --use-case asr
+  {{< /tab >}}
+  {{< tab header="macOS" language="bash">}}
+python3 set_up_default_resources.py \
+  --parallel "$(sysctl -n hw.logicalcpu)" \
+  --ml-frameworks executorch \
+  --use-case asr
+  {{< /tab >}}
+{{< /tabpane >}}
+
+The first run creates a Python environment and downloads the pinned model and framework dependencies. It can take several minutes.
+
+Confirm that MLEK generated the `.pte` models and that the vocabulary is present:
 
 ```bash
-python3 set_up_default_resources.py --ml-frameworks executorch
+find resources_downloaded/asr -name '*.pte' -print
+ls -lh resources/asr/labels/librispeech_sp.pieces
 ```
-
-This step can take about 30-40 minutes.
 
 ## How are the ExecuTorch .pte files generated?
 
@@ -143,14 +197,6 @@ At runtime, the application converts audio into Mel spectrogram features, runs t
 The vocab file is a line-by-line token list. During postprocessing, the decoder uses the model output value as an index into this list.
 
 Each entry is a piece of text. Some pieces are single letters, some are word fragments, and some represent common words or word starts. SentencePiece uses the `▁` marker to represent a word boundary, so `▁the` means the token starts a new word.
-
-## (Optional) Run these steps manually
-
-If you want to run these steps manually, you can start from the original [FP32 implementation of the Conformer](https://github.com/sooftware/conformer/), train the model on a LibriSpeech dataset from torchaudio, and perform Post-Training Quantization (PTQ) to convert from FP32 to INT8, with instructions here: [PyTorch Conformer Train and Quantize](https://github.com/Arm-Examples/ML-examples/tree/main/pytorch-conformer-train-quantize). For more detail, check out the [End-to-end INT8 Conformer on Arm blog](https://developer.arm.com/community/arm-community-blogs/b/internet-of-things-blog/posts/end-to-end-int8-conformer-on-arm-training-quantization-and-deployment-on-ethos-u85).
-
-Alternatively, you can use the exported INT8 Quantized Conformer model, provided by Arm on Hugging Face: [INT8 Conformer](https://huggingface.co/Arm/stt_en_conformer_executorch_small).
-
-Once you have obtained an exported INT8 Conformer model, you will need to lower to ExecuTorch `.pte` format using the `to_edge_transform_and_lower` API. Instructions can be found at the Hugging Face link.
 
 ## What you have accomplished and what is next
 

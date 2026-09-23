@@ -1,131 +1,179 @@
 ---
-title: Adapt the ASR application for the Alif E8 DevKit
-description: Set up Alif MLEK, locate the `alif_asr` application, and compare the board-specific code with the ASR application you ran on FVP.
+title: Prepare the ASR application for the Alif E8 DevKit
+description: Connect the E8 DevKit display, prepare the Alif MLEK resources, and compare the board application with the ASR application you ran on FVP.
 weight: 4
 
 layout: "learningpathall"
 ---
 
-Now we will continue from the Corstone-320 FVP run by setting up Alif MLEK and reviewing the `alif_asr` application. You will see which parts of the ASR flow stay the same and which parts change for the Alif Ensemble E8 DevKit.
+## Move from the FVP to the E8 DevKit
+
+Your FVP run verified the Conformer model, audio preprocessing, inference, and token decoding using recorded audio. You will now use those same ASR stages to recognize speech on the Alif Ensemble E8 DevKit.
+
+The board uses a separate application, `alif_asr`, from the Alif MLEK repository. You will build new firmware for the E8's high-performance Cortex-M55 core, capture audio from its PDM microphones, and read the transcription on the attached display.
+
+| FVP application | E8 DevKit application |
+| --- | --- |
+| Arm MLEK `asr`, built for Corstone-320 | Alif MLEK `alif_asr`, built for the E8 HP subsystem |
+| WAV samples compiled into the firmware | PDM microphone input |
+| Simulated UART output in your terminal | Transcription on the attached display |
+| Application and model loaded through the AXF file | Application in MRAM and model in external OSPI flash |
+
+## Connect the board and required display
+
+To connect to the Alif Ensemble E8 DevKit:
+
+1. Unplug all USB cables from the DevKit before changing any jumpers.
+
+2. Verify that the jumpers are in their factory default positions, as shown in the Alif Ensemble E8 DevKit (DK-E8) User Guide on [alifsemi.com](https://alifsemi.com/support/kits/ensemble-e8devkit/).
+
+3. Connect a USB-C cable from your computer to the PRG USB port on the bottom edge of the DevKit.
+
+![Close-up of the Alif Ensemble E8 DevKit showing a USB-C cable connected to the PRG USB port; the separate MCU USB port is visible below#center](prg-usb-port.png "USB-C cable connected to the PRG USB port")
+
+4. Confirm that a green LED illuminates near the E1 device and switch SW4.
+
+{{% notice Important %}}
+Keep a supported display connected throughout the board steps. The `alif_asr` application at the revision used here needs the display attached to run.
+{{% /notice %}}
+
+<!-- AUTHOR TODO: Confirm the exact display module used for the published test and add a close-up showing the ribbon orientation. Keep the hardware photo specific to the tested E8 DevKit revision. -->
+
+## Install SETOOLS
+
+Secure Enclave Tools (SETOOLS) is Alif's toolset for flashing firmware to MRAM through the Secure Enclave.
+
+1. Download the SETOOLS package for your host operating system from the [Alif Ensemble E8 DevKit support page](https://alifsemi.com/support/kits/ensemble-e8devkit/) and extract it to your home directory, replacing the archive filename in the command:
+
+  ```bash
+    cd "$HOME/Downloads"
+    tar xvf "replace_with_your_alif_security_toolkit_download.tar" -C "$HOME"
+  ```
+
+2. Verify the installation:
+
+  {{< tabpane code=true >}}
+    {{< tab header="macOS" language="bash" >}}
+    cd "$HOME/app-release-exec-macos"
+    ./app-write-mram -h
+    ./app-gen-toc -h
+    {{< /tab >}}
+  {{< tab header="Linux" language="bash" >}}
+    cd "$HOME/app-release-exec-linux"
+    ./app-write-mram -h
+    ./app-gen-toc -h
+  {{< /tab >}}
+  {{< /tabpane >}}
+
+  The extracted folder name can vary by SETOOLS release. The commands assume the package extracts to `app-release-exec-*`. Each command should print a `usage:` message. If either command fails, check that you're in the extracted SETOOLS directory for your operating system.
+
+  {{% notice Important %}}
+  On macOS, the system might block the unsigned binary the first time you run it. If this happens, do the following:
+
+  1. Open **System Settings**.
+  2. Navigate to **Privacy & Security**.
+  3. Select **Open Anyway**, only if you trust the package downloaded from Alif.
+
+  Then, run the command again. You might need to reapprove for both `./app-*` commands.
+  {{% /notice %}}
+
+
+## Install J-Link
+
+The SEGGER J-Link Software and Documentation Pack includes J-Flash, which you'll use later to program the model into external OSPI flash.
+
+Install J-Link for your host operating system. This Learning Path was tested with version 9.54. 
+
+On Linux, run `uname -m` and download the matching `.deb` package from the [SEGGER website](https://www.segger.com/downloads/jlink/): x86-64 for `x86_64`, or ARM64 for `aarch64`. Replace the filename in the command:
+
+{{< tabpane code=true >}}
+  {{< tab header="macOS" language="bash">}}
+brew install --cask segger-jlink
+  {{< /tab >}}
+  {{< tab header="Ubuntu Linux" language="bash">}}
+cd "$HOME/Downloads"
+sudo apt install ./replace_with_your_jlink_download.deb
+  {{< /tab >}}
+{{< /tabpane >}}
 
 ## Clone the Alif MLEK repository
 
-Clone the Alif ML Embedded Evaluation Kit repository:
+Before you begin, **use Python 3.10–3.13**. Leave any active virtual environment and check your version:
 
 ```bash
+if type deactivate >/dev/null 2>&1; then deactivate; fi
+python3 --version
+```
+
+If needed, install a supported version from the [Python downloads page](https://www.python.org/downloads/) and rerun the version check.
+
+Clone Alif MLEK into your home directory.
+
+```bash
+cd "$HOME"
 git clone https://github.com/alifsemi/alif_ml-embedded-evaluation-kit.git
 cd alif_ml-embedded-evaluation-kit
+git checkout 0b6ce72c495265501f7a12eaed8e6ea71ef4bf15
 git submodule update --init --recursive
 ```
 
-{{% notice AUTHOR TODO %}}
-This draft uses Alif MLEK commit `0b6ce72c495265501f7a12eaed8e6ea71ef4bf15`. It would be helpful to confirm the supported host and tool versions before publication, and to pin a commit if the generated model names or build commands need to remain stable.
-{{% /notice %}}
-
-{{% notice AUTHOR TODO %}}
-Potential extra detail from Alif: it would be helpful to clarify whether the default PDM microphone path uses the onboard E8 DevKit microphones, the I2S/PDM microphone ports, or either option depending on board configuration.
-{{% /notice %}}
+Use this pinned revision for the first run. If you already have a clone, keep any local work and use a separate directory for a clean test.
 
 ## Prepare the ExecuTorch model
 
-As before, we run the setup script with ExecuTorch enabled to generate the model in `.pte` format:
+Run the resource setup script in the Alif repository:
 
 ```bash
 python3 set_up_default_resources.py --ml-frameworks executorch
+source resources_downloaded/env/bin/activate
 ```
 
-This prepares the Conformer checkpoint, vocabulary, and Ethos-U85 `.pte` model family in the Alif repository layout. The board build uses these generated resources when it builds `mlek_alif_asr`.
+This prepares the Conformer checkpoint, vocabulary, and Ethos-U85 `.pte` models in the Alif repository layout. It also creates this repository's Python environment. The board build uses these resources when it builds `mlek_alif_asr`.
 
-## Locate the ASR application in MLEK
+Confirm the board model and vocabulary are available:
 
-The Alif ASR application lives in:
-
-```output
-source/app/use_case/alif_asr/
+```bash
+ls -lh \
+  resources_downloaded/asr/conformer_fp32_cln_wer_6_47_arm_delegate_ethos-u85-256.pte \
+  resources/asr/labels/librispeech_sp.pieces
 ```
 
-The main files are:
+The generated model used in the tested build is about 10.4 MB. The E8's application MRAM cannot hold that model alongside the firmware, so the build places the model in external flash accessed through the Octal Serial Peripheral Interface (OSPI).
 
-- `usecase.cmake`: selects the model, labels, memory settings, and generated assets.
-- `src/MainLoop.cc`: initializes the ExecuTorch Conformer model, activation buffer, labels, profiler, and application context.
-- `src/UseCaseHandlerEt.cc`: handles audio input, Conformer preprocessing, inference, postprocessing, and logs for the ExecuTorch path.
-- `src/UseCaseHandlerTflm.cc`: handles the TensorFlow Lite Micro path.
-- `include/UseCaseHandler.hpp`: declares the use-case handlers.
+## Locate the board application
 
-The MRAM flash configuration is in:
+The application lives in `source/app/use_case/alif_asr/`. These files explain the parts you will configure and run:
 
-```output
-alif_asr.json
-```
+| File | Role |
+| --- | --- |
+| `usecase.cmake` | Selects the model, vocabulary, activation buffer, and generated assets |
+| `src/MainLoop.cc` | Initializes the model, labels, profiler, and application context |
+| `src/UseCaseHandlerEt.cc` | Handles microphone capture, preprocessing, ExecuTorch inference, decoding, and display updates |
+| `include/UseCaseHandler.hpp` | Declares the use-case handler |
+| `alif_asr.json` in the repository root | Describes the MRAM application package and HP boot configuration |
 
-## Read the Alif application startup code
+`src/UseCaseHandlerTflm.cc` contains the alternative TensorFlow Lite Micro path. This Learning Path uses `UseCaseHandlerEt.cc`.
 
-For the ExecuTorch build, `MainLoop.cc` uses `ConformerModel` as the ASR model wrapper. It creates two memory regions before it enters the use-case handler:
+## Follow the startup and inference flow
 
-- `modelMem`: points to the generated model data.
-- `computeMem`: points to the activation buffer used while loading and running the model.
+For the ExecuTorch build, `MainLoop.cc` uses `ConformerModel` as the ASR model wrapper. It creates two memory regions before entering the handler: `modelMem` points to the generated model data, and `computeMem` points to the activation buffer used while loading and running the model.
 
-The startup code then initializes the model, checks the input and output tensor dimensions, loads the vocabulary labels, creates the profiler, adds the Conformer window and hop settings to the application context, and calls `ClassifyAudioHandler(caseContext)`.
+The startup code initializes the model, checks tensor dimensions, loads the vocabulary labels, and creates the profiler. It adds the model, labels, profiler, and Conformer window and hop settings to an application context, then calls `ClassifyAudioHandler(caseContext)`. The context lets helpers share these settings without each owning the full application state.
 
-The application context passes the model, labels, profiler, and Conformer parameters to the handler without making each helper own the full application state.
+The handler then:
 
-## Read the board inference handler
+1. Gets the model tensors and creates the Conformer preprocessor and postprocessor.
+2. Initializes the display layout and the button callback.
+3. Initializes the PDM microphone path at 16 kHz.
+4. Waits for a joystick centre press and captures audio while you hold it.
+5. Limits the captured length to fit the model input, generates the Mel spectrogram, runs inference, and decodes the tokens.
+6. Updates the display with the transcription and processing times.
 
-The ExecuTorch handler is:
+The Conformer preprocessing, postprocessing, ExecuTorch model wrapper, and SentencePiece vocabulary serve the same purposes as in the FVP application. The board-specific code supplies live audio, display output, and the E8 memory layout.
 
-```output
-source/app/use_case/alif_asr/src/UseCaseHandlerEt.cc
-```
+## Understand the model and memory settings
 
-The default board flow uses PDM microphone input and prints the decoded text to the terminal output. This changes from an FVP flow that processes a fixed audio file, to an application that requires button input to start capturing and processing audio. 
-
-The handler does the following:
-
-1. Gets the model input and output tensors.
-2. Creates `ConformerPreProcess` for Mel spectrogram generation.
-3. Creates `ConformerPostProcess` for token decoding.
-4. Initializes Alif audio at 16 kHz.
-5. Waits for `BOARD_BUTTON2`.
-6. Captures audio chunks from the PDM microphone path while the button is held.
-7. Clamps the audio length so it fits the model input tensor.
-8. Runs preprocessing, inference, and postprocessing.
-9. Prints `Decoded output: ...` to the UART log.
-
-## Compare the FVP and board applications
-
-The Arm `asr` application you ran on FVP and the Alif `alif_asr` application use the same Conformer-specific pieces:
-
-- Conformer preprocessing, which converts audio samples into Mel spectrogram input.
-- Conformer postprocessing, which converts output logits and output lengths into decoded text.
-- The ExecuTorch `ConformerModel` wrapper.
-- The SentencePiece vocabulary in `resources/asr/labels/librispeech_sp.pieces`.
-
-The Alif application keeps those ASR stages, but changes how the application is built, how audio enters the system, where the model is stored, and how terminal output is routed. The board-specific pieces for the first board run are:
-
-- HP subsystem build with `TARGET_SUBSYSTEM=RTSS-HP`.
-- E8 DevKit board selection with `TARGET_BOARD=DevKit-e8`.
-- The same Ethos-U85 NPU target selection used on FVP, with Alif-specific board, subsystem, memory, and console settings.
-- PDM microphone input with `TARGET_MICS=PDM`.
-- UART4 logs with `CONSOLE_UART=4`.
-- External OSPI flash placement for the Conformer model.
-- MRAM boot configuration for the HP Cortex-M55 core.
-
-The table shows the key changes:
-
-| FVP application | E8 DevKit application | Why it changes |
-| --- | --- | --- |
-| Model data built into the application image | Model data linked to external OSPI flash | The Conformer model does not fit in Alif MRAM |
-| WAV files compiled into firmware | PDM microphone input | The E8 DevKit can capture live voice input on the board |
-| Console output | UART4 logs | The board needs a physical terminal output path |
-| Corstone-320 FVP memory layout | E8 HP subsystem linker layout | Firmware, activation buffers, temporary ExecuTorch memory, and model storage must fit the board memory map |
-
-{{% notice AUTHOR TODO %}}
-Potential extra detail from Alif: this would be a good place for any E8 DevKit-specific notes that are easy to miss when moving from FVP to board, such as boot core selection, UART routing, memory regions, cache settings, or external flash access.
-{{% /notice %}}
-
-## Configure memory and model placement
-
-The `alif_asr` CMake file enables external flash model placement by default:
+The `alif_asr` CMake file enables external flash placement by default:
 
 ```cmake
 USER_OPTION(${use_case}_MODEL_IN_EXT_FLASH "Run model from external flash"
@@ -133,33 +181,17 @@ USER_OPTION(${use_case}_MODEL_IN_EXT_FLASH "Run model from external flash"
     BOOL)
 ```
 
-When this option is enabled, MLEK places model data in the `nn_model_ext_flash` section and generates a separate `ext_flash.bin` file. The MLEK documentation states that `alif_asr` uses external OSPI flash because the model does not fit in MRAM.
+With this option enabled, MLEK places model data in the `nn_model_ext_flash` section and generates `ext_flash.bin` separately from `mram.bin`. You will program both files in the next section.
 
-For the ExecuTorch Conformer model, `alif_asr` uses:
+The board configuration uses `TARGET_SUBSYSTEM=RTSS-HP`, `TARGET_BOARD=DevKit-e8`, and `TARGET_MICS=PDM`. Its ExecuTorch memory pools are:
 
-- Model: `resources_downloaded/asr/conformer_fp32_cln_wer_6_47_arm_delegate_ethos-u85-256.pte`
-- Labels: `resources/asr/labels/librispeech_sp.pieces`
-- Activation buffer: `0x00108000`
-- Temporary ExecuTorch memory in the E8 build command: `0x002C0000`
+- `alif_asr_ACTIVATION_BUF_SZ=0x00108000` for the method allocator pool.
+- `ML_FWK_TMP_MEM_SIZE=0x002C0000` for temporary allocation.
 
-ExecuTorch uses two memory areas in this flow: the method allocator pool controlled by `alif_asr_ACTIVATION_BUF_SZ`, and the temporary allocation pool controlled by `ML_FWK_TMP_MEM_SIZE`.
-
-## Configure microphone input
-
-Use PDM microphone input for the first board deployment. This matches the default `alif_asr` flow: the application captures live 16 kHz audio, converts it into Mel spectrogram features, runs Conformer inference, and prints decoded text.
-
-LVGL display output is a useful demo addition, but it adds UI code and display setup. Add display output after the microphone-to-terminal flow is working.
-
-{{% notice AUTHOR TODO %}}
-Potential extra detail from Alif: it would be useful to clarify whether the E8 DevKit microphone path works out of the box with `TARGET_MICS=PDM`, and to mention any jumper, port, or board revision notes that affect this step.
-{{% /notice %}}
-
-{{% notice AUTHOR TODO %}}
-Potential extra detail from Alif: a short note on how capture length maps to the Conformer input tensor would help learners who want to use a different microphone path.
-{{% /notice %}}
+Keep these settings for the first run so that model selection, runtime memory, and the physical connections match the tested application.
 
 ## What you have accomplished and what is next
 
-You have cloned the Alif MLEK repository, prepared its ExecuTorch resources, located the `alif_asr` application, and compared its board-specific code with the FVP application.
+You have connected the required board hardware, prepared the Alif MLEK resources, and identified how the board application extends the ASR flow you ran on the FVP.
 
-Next, you will build the ASR firmware for the E8 DevKit.
+Next, you will build the E8 firmware, program the model into OSPI flash, and install the application in MRAM.

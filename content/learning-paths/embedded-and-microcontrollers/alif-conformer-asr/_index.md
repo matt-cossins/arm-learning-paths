@@ -13,16 +13,17 @@ learning_objectives:
     - Build and run the ASR application on the Corstone-320 FVP, and understand how it works
     - Understand how the ASR application is adapted from an FVP flow, to running on a physical Alif E8 DevKit
     - Build, flash, and verify the ASR application on the E8 DevKit
-    - (Optional) Add a display to turn the application into a complete demo
+    - Verify the transcription on the connected display
 
 prerequisites:
     - Experience with C/C++, CMake, and embedded baremetal development concepts
     - Familiarity with PyTorch, ExecuTorch, and quantized model deployment
-    - A development machine running MacOS or Linux
-    - An Alif Ensemble E8 DevKit (includes a SEGGER J-Link debug probe) with USB-C cable
+    - A Linux development machine, or an Apple Silicon Mac running macOS 15 or later (Docker Desktop is also required for the macOS FVP flow)
+    - An Alif Ensemble E8 DevKit with its supported display attached, the onboard SEGGER J-Link debug probe, and a USB-C data cable
 
 author: 
     - Matt Cossins
+    - Kwashie Andoh
     - Alif Semiconductor (Authors TBD)    
 
 generate_summary_faq: false
@@ -44,7 +45,7 @@ tools_software_languages:
 operatingsystems:
     - Baremetal
     - Linux
-    - MacOS
+    - macOS
 
 further_reading:
     - resource:

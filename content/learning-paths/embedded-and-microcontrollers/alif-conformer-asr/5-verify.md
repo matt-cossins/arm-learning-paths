@@ -1,65 +1,37 @@
 ---
 title: Verify ASR inference on the E8 DevKit
-description: Run the ASR application on the Alif E8 DevKit and verify that the Conformer model executes on the Ethos-U85 NPU.
+description: Capture a spoken phrase on the E8 DevKit and verify the ASR transcription on its connected display.
 weight: 6
 
 layout: "learningpathall"
 ---
 
-Now, we will run the flashed ASR application and verify that it captures microphone input, runs Conformer inference, and prints decoded text.
+## Start the application
 
-## Connect to application output
+Keep the supported display attached and the **PRG USB** cable connected.
 
-The `alif_asr` build command selects UART4:
+Close J-Flash and SETOOLS, then press and release **RESET**. Wait for the display to show **Conformer ASR (ExecuTorch)** before testing audio.
 
-```output
--DCONSOLE_UART=4
-```
+![E8 display showing Conformer ASR (ExecuTorch) with an empty spectrogram, ready for speech capture.#center](e8-ready-to-capture.jpg "Conformer ASR ready to record")
 
-Connect a serial terminal to the M55-HP debug console selected by the E8 DevKit jumpers. Use the UART settings specified by the Alif board documentation.
+## Speak a short phrase
 
-{{% notice AUTHOR TODO %}}
-Potential extra detail from Alif: it would be helpful to include the UART connection details for the E8 DevKit used in this demo, such as jumper or connector requirements, baud rate, serial device naming examples, and whether RTT or another log path is also supported.
-{{% /notice %}}
+Locate the joystick shown in Figure 2A (page 8) of the [E8 DevKit User Guide](https://alifsemi.com/download/AUGD0023#page=8).
 
-## Run an ASR input
+1. Press straight down on the centre of the joystick and hold it.
+2. Say a short phrase while holding it.
+3. Release the joystick to finish recording.
+4. Wait for the transcription to appear on the display.
 
-The board run uses PDM microphone input. Speak a short phrase so you can verify the capture, preprocessing, inference, and decoding path.
+The display also shows the spectrogram, input duration, and processing times. The exact transcription depends on your speech and background noise. Repeat with a different phrase to check that another recording works.
 
-To run a test:
+![E8 display showing a speech spectrogram, processing times, and the transcription hallo after a recording.#center](e8-inference-complete.jpg "Example transcription after releasing the joystick")
 
-1. Reset the board.
-2. Connect to the terminal output.
-3. Press and hold `BOARD_BUTTON2`.
-4. Speak a short phrase.
-5. Release the button.
+## If the test does not work
 
-The application captures audio while the button is held, preprocesses it into a Mel spectrogram, runs the Conformer model, decodes the output tokens, and prints the result.
+- **Blank display:** power off before checking the display ribbon cable. Confirm that both images were programmed successfully and that the final MRAM write used the ASR package, not the CPU stubs.
+- **Empty or incorrect transcription:** keep the microphones unobstructed, hold the joystick centre throughout the phrase, and try again in a quiet setting.
 
-On the UART log, look for a line like:
+## What you have accomplished
 
-```output
-Decoded output: <recognized text>
-```
-
-## Confirm the Ethos-U85 path executed
-
-{{% notice AUTHOR TODO %}}
-Potential extra detail from Alif: a concrete board-side check would be useful here, such as a specific log line, profiler output, PMU counter, or expected timing range for the published model and board configuration.
-{{% /notice %}}
-
-## Troubleshooting
-
-Check these symptoms:
-
-- No UART output: confirm the M55-HP debug UART and `CONSOLE_UART=4` connection.
-- Model load failure: confirm `ext_flash.bin` was flashed to `0xC0000000`.
-- Boot failure: confirm `mram.bin` was flashed with `alif_asr.json` and `M55_HP`.
-- Empty or silent audio: confirm `TARGET_MICS=PDM`, the microphone path, and that `BOARD_BUTTON2` is held while speaking.
-- Allocation failure: confirm `ML_FWK_TMP_MEM_SIZE=0x002C0000` and the default `alif_asr_ACTIVATION_BUF_SZ=0x00108000`.
-
-## What you have accomplished and what is next
-
-You have run the ASR application on the E8 DevKit and verified that the Conformer model executes on the Ethos-U85 NPU.
-
-Next, you can add display output to turn the terminal-based application into a board demo.
+You have programmed the E8 DevKit, captured live speech, and read the Conformer ASR transcription on its display.
