@@ -31,11 +31,11 @@ layout: learningpathall
 learning_path_main_page: 'yes'
 skilllevels: Introductory
 subjects: Databases
-cloud_service_providers:
-  - AWS
-  - Microsoft Azure
-  - Google Cloud
-  - Oracle
+platforms:
+  - AWS Graviton
+  - Microsoft Azure Cobalt
+  - Google Axion
+  - Oracle Cloud Infrastructure (OCI) Ampere Compute
 test_maintenance: false
 tools_software_languages:
 - MongoDB
