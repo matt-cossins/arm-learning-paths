@@ -58,7 +58,7 @@ An `.axf` file is the linked executable, in ELF format. It contains compiled cod
 
 The MLEK resource setup script does not install the Corstone-320 FVP. Install the FVP before you run the built `mlek_asr.axf` application.
 
-For macOS, install [Docker Desktop](https://docs.docker.com/desktop/setup/install/mac-install/) and start it before continuing. The macOS tab also activates the free MDK Community license for evaluation and non-commercial use. For commercial use, see the [Arm license activation guidance](/learning-paths/embedded-and-microcontrollers/vcpkg-tool-installation/licenseactivation/) for your entitlement.
+For macOS, install [Docker Desktop](https://docs.docker.com/desktop/setup/install/mac-install/) and start it before continuing. The macOS tab also activates the free MDK Community license for evaluation and non-commercial use.
 
 {{< tabpane code=true >}}
   {{< tab header="Linux x86_64" language="bash">}}

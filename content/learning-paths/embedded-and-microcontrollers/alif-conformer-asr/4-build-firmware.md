@@ -165,7 +165,7 @@ The steps follow the [Alif MLEK J-Flash guide](https://github.com/alifsemi/alif_
 8. Select **Target > Disconnect** and close J-Flash.
 
 {{% notice Note %}}
-If J-Link connects but reports `Failed to perform RAMCode-sided Prepare()`, check the selected device and flash bank, confirm the CPU-stub write succeeded, and reset the board before retrying. Sometimes, it might help to pwercycle the board and reopen JFlash. This message is not a successful OSPI write.
+If J-Link connects but reports `Failed to perform RAMCode-sided Prepare()`, check the selected device and flash bank, confirm the CPU-stub write succeeded, and reset the board before retrying. Sometimes, it might help to powercycle the board and reopen JFlash. This message is not a successful OSPI write.
 {{% /notice %}}
 
 ## Package and flash the ASR application into MRAM
