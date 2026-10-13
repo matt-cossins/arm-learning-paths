@@ -7,7 +7,7 @@ layout: "learningpathall"
 
 ## List the reported findings
 
-Metis reports findings, reasoning, source locations, and mitigations. This page adds a manual triage workflow: you compare a finding with source code, attacker control, build assumptions, and the Magma diff before treating it as confirmed.
+Both report options provide Metis v1.5.5 review findings without automated triage verdicts. This page provides the manual validation step: compare the selected finding with source code, attacker control, build and runtime configuration, and the Magma diff before deciding its status.
 
 Select the report you want to summarize:
 
@@ -28,7 +28,7 @@ REPORT=results/libpng-review-candidate.json
   {{< /tab >}}
 {{< /tabpane-normal >}}
 
-Print a compact summary:
+The JSON reports store findings inside `reviews` groups. The summary below uses the finding's source `anchor` when present, then falls back to its primary file or review-group file and `line_number`. Print a compact summary:
 
 ```bash
 python - "$REPORT" <<'PY'
@@ -58,21 +58,22 @@ PY
 If you selected the captured report, the expected output is:
 
 ```output
-Medium CWE-369: Externally controlled image dimensions can trigger division by zero in IDAT chunk length validation (pngrutil.c:3163)
+Medium CWE-369: Attacker-controlled image width can make IDAT chunk-length validation divide by zero (pngrutil.c:3163)
 ```
 
-The pre-provided report contains one medium-severity finding in `pngrutil.c`: a possible division by zero after a row-size value is narrowed. If the summary from your live report includes a similar row-factor or division-by-zero finding in `pngrutil.c`, you can continue with the live report. Otherwise, set `REPORT=results/libpng-review-candidate.json` and use the captured report for the guided triage.
+The captured example contains one medium-severity finding from the current run: a possible division by zero in `png_check_chunk_length` at `pngrutil.c:3163–3177`. If your live report includes the same row-factor issue, you can continue with it. Otherwise, set `REPORT=results/libpng-review-candidate.json` and use the captured example for the guided triage.
 
 ## Triage the row-factor finding
 
 DVCP taught the mechanics of running Metis and reading a report. The prepared libpng tree is the more realistic example: you need to inspect the reported source region, check whether values parsed from the PNG file can influence the operation (attacker-controlled values), and compare the region with the prepared-source diff.
 
-For this finding, you are checking four things:
+For this finding, check the operation and its preconditions:
 
 1. Does the reported source location contain the operation Metis described?
 2. Can PNG-controlled fields influence the value?
 3. Can the narrowing conversion produce a zero divisor?
-4. Does the source region overlap a known vulnerability introduced by the Magma preparation?
+4. Do the build and runtime image limits allow the required input?
+5. Does the source region overlap a known vulnerability introduced by the Magma preparation?
 
 First, display the reported source region:
 
@@ -90,11 +91,28 @@ Use the report, source region, and diff to decide whether this is a credible fin
 
 1. `png_ptr->width`, channel count, bit depth, and interlace state originate from the parsed PNG.
 2. The arithmetic is performed in `size_t`, then narrowed to `png_uint_32`.
-3. A sufficiently large row factor can wrap to zero during the narrowing conversion.
+3. For an 8-bit RGB, non-interlaced image with width `1431655765`, the row factor is `width * 3 + 1`, or `4294967296`. This fits in a 64-bit `size_t` but becomes zero when narrowed to `png_uint_32`.
 4. The narrowed value is used as a divisor before a zero check.
 5. The changed lines overlap a Magma-introduced vulnerability in the prepared-source diff.
 
-This is a strong match to the known vulnerable change in the prepared libpng target. Metis identified the relevant operation, explained attacker control, and proposed avoiding the narrowing conversion or checking the value before division. The triage decision is therefore **confirmed for this exercise target**.
+Now inspect the image-width guard and the documented default limits:
+
+```bash
+grep -n 'PNG_USER_WIDTH_MAX' libpng-review/scripts/pnglibconf.h.prebuilt
+sed -n '2587,2595p' libpng-review/png.c
+sed -n '654,668p' libpng-review/libpng-manual.txt
+```
+
+The default width limit is `1000000`, so it rejects this input during IHDR validation, before the IDAT header reaches the reported division. An application can raise the limit with `png_set_user_limits()` before `png_read_info()`, and build-time settings can also change it. Check the actual application configuration rather than assuming any PNG can reach the operation.
+
+Separate validation of the prepared source on Arm64 used UndefinedBehaviorSanitizer and a 41-byte PNG prefix through `png_read_info()`, without decoding pixel data:
+
+| Width-limit configuration | Observed result |
+| --- | --- |
+| Default `1000000` | The input is rejected as invalid IHDR data before the IDAT header is processed. |
+| Raised to `PNG_UINT_31_MAX` with `png_set_user_limits()` | UndefinedBehaviorSanitizer reports division by zero at `pngrutil.c:3172`. |
+
+The finding is **confirmed for the permissive-limit validation case**, not for every deployment. Check the actual application's limits before applying that conclusion.
 
 ## Triage additional live findings
 

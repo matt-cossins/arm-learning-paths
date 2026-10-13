@@ -79,58 +79,87 @@ You need a Metis report before you can triage a finding. Choose one of these opt
   {{< tab header="Run live review" >}}
 This option asks Metis to review only `pngrutil.c`, because the triage exercise focuses on a finding in that file.
 
-The live libpng review can run for many minutes, and consume substantial model tokens. Use the pre-captured report option if a live run is too costly or does not produce a finding you can triage.
+The captured v1.5.5 review used 1,770,160 model tokens. A live run can take several minutes and consume substantial API quota. Use the captured report option to avoid those model calls or if your run does not produce a finding you can triage.
 
 ```bash
 cd "$HOME/metis-security-review/libpng-review"
 metis \
+  --interactive \
   --codebase-path . \
-  --non-interactive \
-  --command "review_file pngrutil.c" \
+  --config "$HOME/metis-security-review/metis-review.yaml" \
   --output-file ../results/libpng-live.json
+```
+
+`--interactive` opens the command prompt instead of running the full configured graph. At the prompt, `review_file` runs the required Initialize prerequisites automatically, then reviews the file. This command omits `--triage`, so Metis does not run automated triage; you will validate a finding manually in the next section. Review the file, then exit after the review completes:
+
+```console
+review_file pngrutil.c
+exit
+```
+
+Back in your shell, return to the exercise workspace:
+
+```bash
 cd "$HOME/metis-security-review"
 ```
 
 This writes `results/libpng-live.json`.
   {{< /tab >}}
   {{< tab header="Use captured report" >}}
-This option creates `results/libpng-review-candidate.json` from a captured Metis report. Use it when you want the next triage section to match the source region and explanation shown in this Learning Path.
+This option creates `results/libpng-review-candidate.json` from the Metis v1.5.5 review captured on October 15, 2026. The full run returned three findings; this file keeps the division-by-zero finding so the following manual triage exercise uses a repeatable example. The finding is unchanged from the live report, with the review group's source path made relative for portability.
 
 ```bash
 cat > results/libpng-review-candidate.json <<'EOF'
 {
   "_provenance": {
-    "artifact_type": "Captured Metis report finding",
-    "release_under_test": "metis-v1.5.0",
-    "capture_note": "Use this artifact to study report structure and triage; do not treat it as guaranteed output for every run."
+    "artifact_type": "Single finding extracted from a Metis review",
+    "release_under_test": "metis-v1.5.5",
+    "metis_commit": "a9f9bdbc9b0ee5c511e32c526fdbdd33719d0ace",
+    "capture_date": "2026-10-15",
+    "configured_model": "gpt-5.5",
+    "reported_model": "gpt-5.5-2026-04-23",
+    "magma_commit": "75d1ae7b180443a778b8830c79176ca5f93642ac",
+    "libpng_commit": "a37d4836519517bdce6cb9d956092321eca3e73b",
+    "prepared_source_sha256": "f628738930426bea4dccd718e5d90daaf012d5cef365880fa0f6adc4f936a78d",
+    "command": "review_file pngrutil.c",
+    "automatic_triage": false,
+    "capture_note": "One finding extracted from the captured run; group source paths are relative for this exercise."
   },
   "reviews": [
     {
       "reviews": [
         {
-          "issue": "Externally controlled image dimensions can trigger division by zero in IDAT chunk length validation",
-          "code_snippet": "size_t row_factor_l =\n         (size_t)png_ptr->width\n         * (size_t)png_ptr->channels\n         * (png_ptr->bit_depth > 8? 2: 1)\n         + 1\n         + (png_ptr->interlaced? 6: 0);\n\n\n      size_t row_factor = (png_uint_32)row_factor_l;\n      if (png_ptr->height > PNG_UINT_32_MAX/row_factor)",
-          "start_line": 3163,
-          "end_line": 3172,
-          "reasoning": "For IDAT chunks, row_factor_l is derived from PNG IHDR-controlled fields stored in png_ptr (width, channels/color type, bit depth, and interlace). On platforms where size_t is wider than png_uint_32, row_factor_l can exceed 32 bits for very large but 31-bit-valid PNG dimensions. It is then truncated by the cast to png_uint_32 and stored back in size_t. Certain valid arithmetic combinations can truncate to 0 (for example, an RGB 8-bit non-interlaced row factor of width*3+1 can equal 2^32). The next line divides by row_factor without checking for zero, so a crafted PNG can crash the decoder during chunk header validation, causing denial of service.",
-          "mitigation": "Do not truncate row_factor_l before using it as a divisor. Keep the computation in png_alloc_size_t/size_t, explicitly check row_factor_l != 0 and row_factor_l <= PNG_UINT_32_MAX where required, or clamp oversized row factors to a safe maximum before division. Prefer overflow-checked helpers for all dimension-derived arithmetic.",
-          "confidence": 0.86,
-          "cwe": "CWE-369",
-          "severity": "Medium",
+          "id": "local-7a71cbab2664-0",
+          "issue": "Attacker-controlled image width can make IDAT chunk-length validation divide by zero",
+          "line_number": 3163,
           "anchor": {
             "file_path": "pngrutil.c",
             "start_line": 3163,
-            "end_line": 3172,
+            "end_line": 3177,
             "start_col": 0,
-            "end_col": 55,
+            "end_col": 80,
             "start_byte": 97432,
-            "end_byte": 97734,
+            "end_byte": 97976,
             "symbol": "pngrutil.c::png_check_chunk_length",
             "kind": "range",
-            "content_hash": "d4fcc275896c8895",
+            "content_hash": "80d065e971b7d4ce",
             "confidence": "exact"
           },
-          "line_number": 3163
+          "primary_file": "pngrutil.c",
+          "primary_function": "pngrutil.c::png_check_chunk_length",
+          "analysis_type": "reachability_local",
+          "path": [
+            "pngread.c::png_read_png",
+            "pngread.c::png_read_info",
+            "pngrutil.c::png_read_chunk_header",
+            "pngrutil.c::png_check_chunk_length"
+          ],
+          "code_snippet": "3161:    {\n3162:       png_alloc_size_t idat_limit = PNG_UINT_31_MAX;\n3163:       size_t row_factor_l =\n3164:          (size_t)png_ptr->width\n3165:          * (size_t)png_ptr->channels",
+          "cwe": "CWE-369",
+          "severity": "Medium",
+          "confidence": 0.78,
+          "reasoning": "For IDAT chunks, the code derives row_factor_l from attacker-controlled IHDR fields: width, channels, bit_depth, and interlace flag. It then truncates this size_t value through an explicit cast to png_uint_32 before using it as the divisor in PNG_UINT_32_MAX/row_factor and later idat_limit/row_factor. A valid 31-bit PNG width can make row_factor_l exactly 2^32; for example, an 8-bit RGB non-interlaced image has channels == 3, bit_depth <= 8, and interlaced == 0, so width 1431655765 yields width * 3 + 1 == 4294967296. After the cast, row_factor becomes 0, and the following divisions execute with a zero divisor. This gives a crafted PNG a parser-crash denial of service when an IDAT chunk length is checked. Exploitability depends on the active user/build width limits permitting such a large width; if a lower user_width_max/default limit is enforced before IDAT processing, that configuration would block this specific input. The vulnerable arithmetic itself is in this function and has no local zero check before division.",
+          "mitigation": "Do not truncate row_factor_l before validating it. Keep the computation in a type wide enough for the maximum supported row size, reject values greater than PNG_UINT_32_MAX or otherwise outside allocation limits, and explicitly check row_factor != 0 before using it as a divisor. Prefer using checked multiplication/addition helpers for all dimension-derived row-size calculations."
         }
       ],
       "file": "pngrutil.c",
@@ -141,7 +170,7 @@ cat > results/libpng-review-candidate.json <<'EOF'
 EOF
 ```
 
-The captured report demonstrates the Metis report structure and provides a stable triage exercise. It is not expected output for every run.
+This is a captured finding from the same release used in the exercises, not guaranteed output for every run. Its reasoning includes an important precondition: the configured image-width limits must permit the large input. The next section checks that condition against the source.
   {{< /tab >}}
 {{< /tabpane-normal >}}
 
