@@ -1,16 +1,20 @@
 ---
-title: Prepare the ExecuTorch CMSIS environment
+title: Prepare the Corstone-300 U55 project
 weight: 2
-description: Set up the pinned ExecuTorch 1.4.0, CMSIS-NN, Ethos-U, Arm GNU, FVP, and Docker environment used by this Learning Path.
+description: Set up the reusable CMSIS-Executorch project and its pinned Python and Arm tool environments.
 
 ### FIXED, DO NOT MODIFY
 layout: learningpathall
 ---
 
-## Understand what you will build
+## Understand the execution plan
 
-Before preparing the environment, it helps to understand how the model will run.
-You will use the ExecuTorch ahead-of-time export flow to divide one model across
+You will start with a small PyTorch model and export it as an ExecuTorch
+program (`.pte`).
+
+On the target, the Cortex-M CPU runs the ExecuTorch runtime and coordinates
+the whole program. The CPU reads the `.pte` and dispatches different parts 
+to either the Ethos-U NPU or to CPU kernels. You will use the ExecuTorch ahead-of-time export flow to divide one model across
 three execution paths:
 
 - A stride-one convolution that Ethos-U55 accepts.
@@ -24,287 +28,158 @@ input
   -> Ethos-U55 delegated convolution
   -> Cortex-M quantized operator using CMSIS-NN
   -> portable FP32 topk
-  -> output
+output
 ```
 
-The three execution paths and the ExecuTorch CMSIS Pack have different roles:
+The three execution paths have different roles:
 
 | Technology | Role in this Learning Path | Expected performance |
 | --- | --- | --- |
-| Ethos-U | Runs supported graph regions on the NPU. | Expected to provide the best performance and energy efficiency for supported neural-network operations. |
-| CMSIS-NN | Supplies optimized Cortex-M kernels for supported quantized CPU operations that remain outside the NPU delegate. | Preferred CPU fallback when a matching CMSIS-NN-backed operator is available. |
-| ExecuTorch portable kernels | Supply general CPU implementations for operations without an accelerated backend implementation. | Compatibility fallback rather than the preferred performance path. |
-| ExecuTorch CMSIS Pack | Supplies versioned, selectable runtime, backend, and operator source components. | Packages the implementation; it does not provide acceleration by itself. |
+| Ethos-U | Runs supported graph regions on the NPU. (eg: Stride-1 convolution) | Expected to provide the best performance and energy efficiency for supported neural-network operations. |
+| [CMSIS-NN](https://arm-software.github.io/CMSIS-NN/latest/index.html) | Supplies optimized Cortex-M kernels for quantized CPU operations that are unsupported by the NPU. (eg: Stride-4 convolution) | Preferred CPU fallback when a matching CMSIS-NN-backed operator is available. |
+| ExecuTorch portable kernels | Supply general CPU implementations for operations without an accelerated backend implementation. (eg: `topk` operation) | Compatibility fallback rather than the preferred performance path. |
 
-The intended order is Ethos-U first, CMSIS-NN second, and portable kernels
-last. This is an expected hierarchy rather than a guaranteed benchmark result.
-Operator shapes, graph boundaries, memory movement, and quantize and dequantize
-operations can affect end-to-end performance.
+Fallback here is planned during export. It isn't recovery from an NPU failure
+at runtime. The exporter determines which regions the target Ethos-U delegate
+supports, then assigns known remaining patterns to the Cortex-M backend.
 
-You will install the published source-based `PyTorch::ExecuTorch` CMSIS Pack,
-select the matching backend and operator components in a CMSIS-Toolbox project,
-and run the resulting executable on a Corstone-300 Fixed Virtual Platform
-(FVP). The FVP validates functional execution, but it does not provide final
-latency, memory, or power measurements for a physical device.
+{{% notice Why this example uses Ethos-U55 %}}
+Ethos-U55 is used because its unsupported stride-four convolution creates a
+predictable fallback region. Ethos-U85 supports more operator configurations,
+so it will typically have less CPU fallback than U55. The same workflow still
+applies when a model contains operations that remain outside the U85 delegate.
+{{% /notice %}}
 
-The following setup creates the pinned export, build, and simulation
-environment used for that workflow.
+In this Learning Path, you will clone a CMSIS-Executorch example that already contains the needed board support,
+runner, memory configuration, and Fixed Virtual Platform (FVP) settings. You
+will then inspect and modify that to observe Cortex-M fallback using optimized CMSIS-NN microkernels.
 
-## Check the host requirements
+## Clone the example project
 
-This Learning Path uses an ExecuTorch CMSIS environment pinned to ExecuTorch
-`1.4.0` and Python `3.12`. The published ExecuTorch CMSIS Pack and the Python
-exporter must use the same ExecuTorch version.
+Clone the CMSIS-Executorch project used by this Learning Path:
 
-Use an arm64 Linux computer with at least `30 GB` of free storage. The host runs
-the exporter and FVP, while Docker provides the CMSIS build environment. Install
-[Docker](/install-guides/docker/) before continuing.
-
-Ubuntu 24.04 LTS on arm64 is a good host option because it provides Python
-`3.12` packages and supports Docker Engine on `arm64`. Other arm64 Linux
-distributions can also work if they provide the required versions and tools.
-
-Install the required host packages:
-
-```bash
-sudo apt update
-sudo apt install -y \
-  build-essential \
-  pkg-config \
-  libzstd-dev \
-  python3.12 \
-  python3.12-dev \
-  python3.12-venv \
-  git \
-  curl \
-  unzip
+```console
+git clone --branch add-corstone-300-u55 https://github.com/Kwash45/CMSIS-Executorch.git
+cd CMSIS-Executorch
+git checkout 173c251496446b8f564c178c415e6f7f28081070
 ```
 
-Check the host architecture, Python version, Docker server, and available disk
-space:
+The explicit checkout pins the project to a revision that has been tested and validated.
 
-```bash
-uname -m
-python3.12 --version
-docker version --format '{{.Server.Arch}} {{.Server.Version}}'
-df -h "$HOME"
+## Install vcpkg and Activate the project tools
+
+The repository's `vcpkg-configuration.json` declares CMSIS-Toolbox, Arm
+Compiler for Embedded, and the Arm FVP.  Install `vcpkg` with the command for your host:
+
+{{< tabpane code=true >}}
+  {{< tab header="Linux" language="bash">}}
+. <(curl https://github.com/microsoft/vcpkg-tool/releases/download/2026-04-08/vcpkg-init.sh -L)
+  {{< /tab >}}
+  {{< tab header="Windows PowerShell" language="powershell">}}
+iex (iwr -useb https://github.com/microsoft/vcpkg-tool/releases/download/2026-04-08/vcpkg-init.ps1)
+  {{< /tab >}}
+{{< /tabpane >}}
+
+Initialize `vcpkg`, then activate it from the repository root. Repeat these commands in each new terminal you open.
+
+{{< tabpane code=true >}}
+  {{< tab header="Linux" language="bash">}}
+. ~/.vcpkg/vcpkg-init
+vcpkg-shell activate
+  {{< /tab >}}
+  {{< tab header="Windows PowerShell" language="powershell">}}
+. "$env:USERPROFILE\.vcpkg\vcpkg-init.ps1"
+vcpkg-shell activate
+  {{< /tab >}}
+{{< /tabpane >}}
+
+The first activation downloads any missing tools. Later activations reuse the
+installed versions.
+
+If you don't already have a suitable Arm Compiler for Embedded license,
+activate the free, non-commercial Keil MDK Community license:
+
+```console
+armlm activate -product KEMDK-COM0 -server https://mdk-preview.keil.arm.com
 ```
 
-Confirm the following results before continuing:
+## Create the Python environment
 
-- `uname -m` reports `aarch64`.
-- Python reports version `3.12`.
-- The Docker server architecture is `arm64`.
-- The home filesystem has at least `30 GB` available.
+Use the repository's setup wrapper to create `.venv` and install its pinned
+export dependencies:
 
-## Clone ExecuTorch 1.4.0
+{{< tabpane code=true >}}
+  {{< tab header="Linux" language="bash">}}
+./setup_venv.sh
+  {{< /tab >}}
+  {{< tab header="Windows PowerShell" language="powershell">}}
+.\setup_venv.bat
+  {{< /tab >}}
+{{< /tabpane >}}
 
-The checkout directory must be named `executorch`. Define the paths used by the
-remaining setup stages, then clone the release tag:
+## Verify the environment
 
-```bash
-export ET_ROOT=$HOME/executorch-1.4.0/executorch
-export LP_WORKSPACE=$HOME/executorch-cmsis-lp
-export RUNNER_DIR=$LP_WORKSPACE/pack-runner
-export LP_ASSETS=https://raw.githubusercontent.com/ArmDeveloperEcosystem/arm-learning-paths/main/content/learning-paths/embedded-and-microcontrollers/optimize-executorch-fallback-cortex-m/files
+The Python package and CMSIS Pack versions must match because the embedded
+runtime loads the program produced by the exporter. Check the host tools, Arm
+build tools, and Python packages:
 
-mkdir -p "$(dirname "$ET_ROOT")" "$LP_WORKSPACE/artifacts"
+{{< tabpane code=true >}}
+  {{< tab header="Linux" language="bash">}}
+git --version
+python3 --version
+cbuild --version
+armclang --version
+.venv/bin/python -c "from importlib.metadata import version; print('ExecuTorch', version('executorch')); print('PyTorch', version('torch'))"
+  {{< /tab >}}
+  {{< tab header="Windows PowerShell" language="powershell">}}
+git --version
+python --version
+cbuild --version
+armclang --version
+.\.venv\Scripts\python.exe -c "from importlib.metadata import version; print('ExecuTorch', version('executorch')); print('PyTorch', version('torch'))"
+  {{< /tab >}}
+{{< /tabpane >}}
 
-git clone \
-  --branch v1.4.0 \
-  --depth 1 \
-  --recurse-submodules \
-  --shallow-submodules \
-  https://github.com/pytorch/executorch.git \
-  "$ET_ROOT"
-
-git -C "$ET_ROOT" describe --tags --exact-match
-```
-
-The expected output is:
+Your Git version can vary. Confirm that Python is between 3.10 and 3.13,
+`cbuild` reports 2.14.0, Arm Compiler for Embedded reports 6.24, and the final
+two lines are:
 
 ```output
-v1.4.0
+ExecuTorch 1.5.1
+PyTorch 2.14.0
 ```
 
-## Build the Python export environment
+## Download the Learning Path assets
 
-Create a Python `3.12` virtual environment inside the checkout:
+Download the fallback model, focused integration patch, and two inspection
+helpers into the repository root:
 
-```bash
-cd "$ET_ROOT"
-python3.12 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip setuptools-scm
-```
+{{< tabpane code=true >}}
+  {{< tab header="Linux" language="bash">}}
+LP_ASSETS=https://raw.githubusercontent.com/ArmDeveloperEcosystem/arm-learning-paths/main/content/learning-paths/embedded-and-microcontrollers/optimize-executorch-fallback-cortex-m/files
 
-The exporter needs the Python backend modules and FlatBuffer schema tool. It
-does not need a complete host runtime build, so the following options disable
-unrelated backends, extensions, kernels, and tests.
+curl -fLO "$LP_ASSETS/mixed_backend_cnn.py"
+curl -fLO "$LP_ASSETS/enable_cortex_m_fallback.patch"
+curl -fLO "$LP_ASSETS/export_cortex_m_fallback.py"
+curl -fLO "$LP_ASSETS/verify_pack_sources.py"
+  {{< /tab >}}
+  {{< tab header="Windows PowerShell" language="powershell">}}
+$lpAssets = "https://raw.githubusercontent.com/ArmDeveloperEcosystem/arm-learning-paths/main/content/learning-paths/embedded-and-microcontrollers/optimize-executorch-fallback-cortex-m/files"
 
-```bash
-export CMAKE_ARGS="\
--DEXECUTORCH_BUILD_COREML=OFF \
--DEXECUTORCH_BUILD_CUDA=OFF \
--DEXECUTORCH_BUILD_DEVTOOLS=OFF \
--DEXECUTORCH_BUILD_EXTENSION_DATA_LOADER=OFF \
--DEXECUTORCH_BUILD_EXTENSION_FLAT_TENSOR=OFF \
--DEXECUTORCH_BUILD_EXTENSION_LLM=OFF \
--DEXECUTORCH_BUILD_EXTENSION_LLM_RUNNER=OFF \
--DEXECUTORCH_BUILD_EXTENSION_MODULE=OFF \
--DEXECUTORCH_BUILD_EXTENSION_NAMED_DATA_MAP=OFF \
--DEXECUTORCH_BUILD_EXTENSION_RUNNER_UTIL=OFF \
--DEXECUTORCH_BUILD_EXTENSION_TENSOR=OFF \
--DEXECUTORCH_BUILD_EXTENSION_TRAINING=OFF \
--DEXECUTORCH_BUILD_KERNELS_CUSTOM_AOT=OFF \
--DEXECUTORCH_BUILD_KERNELS_LLM=OFF \
--DEXECUTORCH_BUILD_KERNELS_LLM_AOT=OFF \
--DEXECUTORCH_BUILD_KERNELS_OPTIMIZED=OFF \
--DEXECUTORCH_BUILD_KERNELS_QUANTIZED=OFF \
--DEXECUTORCH_BUILD_KERNELS_QUANTIZED_AOT=OFF \
--DEXECUTORCH_BUILD_MLX=OFF \
--DEXECUTORCH_BUILD_OPENVINO=OFF \
--DEXECUTORCH_BUILD_PORTABLE_OPS=OFF \
--DEXECUTORCH_BUILD_PYBIND=OFF \
--DEXECUTORCH_BUILD_QNN=OFF \
--DEXECUTORCH_BUILD_TESTS=OFF \
--DEXECUTORCH_BUILD_VULKAN=OFF \
--DEXECUTORCH_BUILD_XNNPACK=OFF \
--DEXECUTORCH_BUILD_CMSIS_NN_PYBINDS=OFF"
-export CMAKE_BUILD_ARGS="--target flatbuffers_ep"
+curl.exe -fLO "$lpAssets/mixed_backend_cnn.py"
+curl.exe -fLO "$lpAssets/enable_cortex_m_fallback.patch"
+curl.exe -fLO "$lpAssets/export_cortex_m_fallback.py"
+curl.exe -fLO "$lpAssets/verify_pack_sources.py"
+  {{< /tab >}}
+{{< /tabpane >}}
 
-CMAKE_BUILD_PARALLEL_LEVEL=2 \
-  ./install_executorch.sh --optional-dependency ethos_u
-
-unset CMAKE_ARGS CMAKE_BUILD_ARGS
-```
-
-Install the CMSIS-NN Python binding at the revision pinned by ExecuTorch
-`1.4.0`:
-
-```bash
-python -m pip install \
-  "scikit-build-core<0.8" \
-  pybind11 \
-  pyproject-metadata \
-  pathspec
-
-python -m pip install --no-build-isolation \
-  "git+https://github.com/ARM-software/CMSIS-NN.git@dbf45dbfcc515421dd6099037d3e2637b90748c8"
-```
-
-Confirm that the exporter dependencies can be imported:
-
-```bash
-python - <<'PY'
-import cmsis_nn
-import executorch.backends.arm
-import executorch.backends.cortex_m
-from executorch.exir import to_edge
-
-print("ExecuTorch 1.4.0 CMSIS Python imports passed")
-PY
-```
-
-The expected output is:
-
-```output
-ExecuTorch 1.4.0 CMSIS Python imports passed
-```
-
-## Install the Arm tools
-
-The ExecuTorch Arm setup installs the Arm GNU toolchain, Ethos-U software, and
-Corstone-300 FVP. Review the Arm license terms before using the acceptance
-option:
-
-```bash
-cd "$ET_ROOT"
-source .venv/bin/activate
-examples/arm/setup.sh --i-agree-to-the-contained-eula
-source examples/arm/arm-scratch/setup_path.sh
-```
-
-Confirm that the compiler and FVP are available:
-
-```bash
-arm-none-eabi-gcc --version | head -n 1
-command -v FVP_Corstone_SSE-300_Ethos-U55
-```
-
-## Fetch the Corstone platform sources
-
-The ExecuTorch CMSIS Pack supplies the runtime, backends, and operators. The
-runner also needs the Corstone target, UART, mailbox, timing, and startup
-sources from the Ethos-U SDK. These are board and simulator support files, not
-ExecuTorch runtime components.
-
-Fetch the `26.02` Ethos-U release used by ExecuTorch `1.4.0`, then apply the
-platform patches supplied in the ExecuTorch checkout. `fetch_externals.py`
-retrieves the SDK repositories listed by that release, while `patch_repo`
-applies the compatibility changes expected by the ExecuTorch example:
-
-```bash
-cd "$ET_ROOT"
-source .venv/bin/activate
-
-ETHOS_SDK="$ET_ROOT/examples/arm/arm-scratch/ethos-u"
-PATCH_DIR="$ET_ROOT/examples/arm/ethos-u-setup"
-
-if [ ! -d "$ETHOS_SDK/.git" ]; then
-  git clone \
-    --branch 26.02 \
-    --depth 1 \
-    https://git.gitlab.arm.com/artificial-intelligence/ethos-u/ethos-u.git \
-    "$ETHOS_SDK"
-fi
-
-source backends/arm/scripts/utils.sh
-patch_repo "$ETHOS_SDK" 26.02 "$PATCH_DIR"
-
-cd "$ETHOS_SDK"
-python fetch_externals.py -c 26.02.json fetch
-
-cd "$ET_ROOT"
-patch_repo "$ETHOS_SDK/core_software" 26.02 "$PATCH_DIR"
-patch_repo "$ETHOS_SDK/core_platform" 26.02 "$PATCH_DIR"
-
-test -f "$ETHOS_SDK/core_platform/targets/corstone-300/target.cpp"
-test -f "$ETHOS_SDK/core_software/Cortex_DFP/Device/ARMCM55/Source/startup_ARMCM55.c"
-echo "Ethos-U Corstone platform sources prepared"
-```
-
-The expected final output is:
-
-```output
-Ethos-U Corstone platform sources prepared
-```
-
-This stage downloads platform support only. The embedded application still
-compiles the ExecuTorch runtime, Ethos-U backend, and selected operators from
-the published ExecuTorch CMSIS Pack.
-
-## Save the workspace settings
-
-Save the paths so each later page can restore them in a new shell:
-
-```bash
-cat > "$LP_WORKSPACE/env.sh" <<'EOF'
-export ET_ROOT="$HOME/executorch-1.4.0/executorch"
-export LP_WORKSPACE="$HOME/executorch-cmsis-lp"
-export RUNNER_DIR="$HOME/executorch-cmsis-lp/pack-runner"
-export LP_ASSETS="https://raw.githubusercontent.com/ArmDeveloperEcosystem/arm-learning-paths/main/content/learning-paths/embedded-and-microcontrollers/optimize-executorch-fallback-cortex-m/files"
-EOF
-
-source "$LP_WORKSPACE/env.sh"
-cd "$LP_WORKSPACE"
-curl -O "$LP_ASSETS/export_cortex_m_fallback.py"
-```
+Each file will be explained in greater detail in subsequent pages.
 
 ## What you've accomplished and what's next
 
-You have prepared the pinned ExecuTorch CMSIS environment and a separate model
-export workspace.
+You now have a pinned Corstone-300 U55 project, its matching Python packages,
+and its versioned Arm tools. The project already owns the board and application
+integration that previously needed many manual setup steps.
 
-Next, you will inspect how CMSIS-NN and portable kernels divide Cortex-M work
-before adding the Ethos-U delegate.
+Next, you will establish a CPU-only baseline before adding
+Ethos-U delegation on the U55 demonstration target.

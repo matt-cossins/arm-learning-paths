@@ -1,90 +1,59 @@
 ---
-title: CMSIS-NN provides optimized fallback for Ethos-U NPUs
+title: Add Ethos-U delegation and CPU fallback
 weight: 4
-description: Partition the model for Ethos-U55, then lower the remaining supported convolution to CMSIS-NN.
+description: Partition TinyCNN for Ethos-U, lower the remaining convolution to Cortex-M, and generate the model-specific AI layer on the U55 demonstration target.
 
 ### FIXED, DO NOT MODIFY
 layout: learningpathall
 ---
 
-## Deploying across Cortex-M and Ethos-U NPU
+## Partition the same model for Ethos-U
 
-We can re-use the same script as on the previous page, this time using 'Fallback mode'. This uses `EthosUPartitioner` to
-create an Ethos-U55 delegate region, represented by `executorch_call_delegate`.
-The exporter then applies `CortexMPassManager` to operations left outside that
-delegate, lowering its supported convolution to a registered Cortex-M operator
-implemented by CMSIS-NN.
+The mixed export changes the order of decisions, not the model. It first gives
+`EthosUPartitioner` the opportunity to claim supported graph regions. It then
+applies Cortex-M lowering only to the operations left outside the delegate:
 
-This is planned fallback, not recovery from a runtime NPU error. During export,
-the partitioner checks operator support and assigns graph regions to Ethos-U.
-Known unsupported operations remain in the graph for another implementation.
-Here, the stride-four convolution is deliberately used to demonstrate that
-path.
-
-{{% notice Why this example uses Ethos-U55 %}}
-Ethos-U55 is used because its unsupported stride-four convolution creates a
-predictable fallback region. Ethos-U85 supports more operator configurations,
-so will typically have less CPU fallback than U55. The same workflow still
-applies when a model contains operations that remain outside the U85 delegate.
-{{% /notice %}}
-
-For supported neural-network operations, the expected order is Ethos-U NPU,
-then CMSIS-NN on the Cortex-M CPU, then a portable CPU kernel. This keeps as much
-work as possible on the NPU and gives unsupported quantized work an optimized
-CPU route before using a general implementation. Measure the complete graph on
-the target device because tensor conversions and graph boundaries can change
-the end-to-end result.
-
-The exporter first creates an Ethos-U55 compile specification and configures
-the target-specific quantizer:
-
-```python
-compile_spec = EthosUCompileSpec(target=args.target)
-quantizer = EthosUQuantizer(compile_spec)
-quantizer.set_global(
-    get_symmetric_quantization_config(is_per_channel=True)
-)
+```text
+quantize the graph
+       |
+       v
+partition supported work for Ethos-U
+       |
+       v
+lower supported remainder to Cortex-M operators
+       |
+       v
+leave the final remainder as portable operations
 ```
 
-After quantization, `EthosUPartitioner` identifies supported regions and lowers
-them into an Ethos-U delegate:
+Ordering matters. If Cortex-M lowering ran first, it could rewrite a
+convolution that should have been offered to the NPU.
 
-```python
-edge_program_manager = to_edge_transform_and_lower(
-    quantized_exported_program,
-    partitioner=[EthosUPartitioner(compile_spec)],
-    compile_config=EdgeCompileConfig(_check_ir_validity=False),
-)
-```
+This run uses the `ethos-u55-128` target to create the predictable fallback
+described earlier. The partition-then-lower order also applies to
+other Ethos-U targets; the operations left outside their delegates can differ.
 
-The exporter then applies Cortex-M lowering to the operations that remain
-outside the delegate:
+Run the diagnostic exporter in mixed mode:
 
-```python
-edge_program_manager._edge_programs["forward"] = CortexMPassManager(
-    edge_program_manager.exported_program()
-).transform()
-```
-
-The order is important: Ethos-U partitioning runs first, so
-`CortexMPassManager` only transforms the non-delegated remainder.
-
-## Export the partially delegated program
-
-Run the exporter in Ethos-U fallback mode:
-
-```bash
-source ~/executorch-cmsis-lp/env.sh
-source "$ET_ROOT/.venv/bin/activate"
-cd "$LP_WORKSPACE"
-
-python export_cortex_m_fallback.py \
+{{< tabpane code=true >}}
+  {{< tab header="Linux" language="bash">}}
+.venv/bin/python export_cortex_m_fallback.py \
   --mode ethos-u-fallback \
   --target ethos-u55-128 \
+  --model-file model/model.py \
   --output-dir artifacts
-```
+  {{< /tab >}}
+  {{< tab header="Windows PowerShell" language="powershell">}}
+.\.venv\Scripts\python.exe .\export_cortex_m_fallback.py `
+  --mode ethos-u-fallback `
+  --target ethos-u55-128 `
+  --model-file model/model.py `
+  --output-dir artifacts
+  {{< /tab >}}
+{{< /tabpane >}}
 
-The relevant output is similar to:
+Vela prints a summary for the region it compiles. The graph inspection at the
+end shows the complete program:
 
 ```output
 Relevant targets before Cortex-M lowering:
@@ -96,44 +65,101 @@ Relevant targets after Cortex-M lowering:
 aten.topk.default: 1
 cortex_m.dequantize_per_tensor.default: 2
 cortex_m.quantize_per_tensor.default: 2
-cortex_m.quantized_conv2d.default: 1
+cortex_m.quantized_conv2d_nhwc.default: 1
+cortex_m.transpose.default: 2
 executorch_call_delegate: 1
 ```
 
-The final graph contains all three execution paths:
+Compare this result with the baseline:
 
-- `executorch_call_delegate` contains the stride-one convolution accepted by
-  Ethos-U55.
-- `cortex_m.quantized_conv2d` is the stride-four convolution rejected by
-  Ethos-U55 and lowered to CMSIS-NN.
-- `aten.topk` remains a portable FP32 operation.
+| Model work | Final graph target | Execution engine |
+| --- | --- | --- |
+| Stride-one convolution and supported surrounding work | `executorch_call_delegate` | Ethos-U55 |
+| Stride-four convolution | `cortex_m.quantized_conv2d_nhwc` | Cortex-M55 using CMSIS-NN |
+| Output selection | `aten.topk` | Cortex-M55 using the portable ExecuTorch kernel |
 
-The graph contains two quantize and two dequantize operations because values
-cross between delegated INT8 work, Cortex-M INT8 work, and portable FP32 work.
-Keeping these conversions visible helps you judge the whole fallback region,
-rather than considering only the convolution kernel.
+One of the two convolution nodes has disappeared into the delegate. The other
+becomes a Cortex-M operator. `topk` remains portable.
 
-The lowered targets determine which components the CMSIS project needs:
+{{% notice Note %}}
+Vela can report `CPU operators = 0` for the region submitted to it. That line
+doesn't describe the complete ExecuTorch graph. The graph summary shows the
+Cortex-M convolution and portable `topk` that remain outside the delegate.
+{{% /notice %}}
 
-| Model operation | Lowered graph target | CMSIS project component | Execution engine |
-| --- | --- | --- | --- |
-| Stride-one convolution | `executorch_call_delegate` | `Backend EthosU` and `Ethos-U Driver Generic U55` | Ethos-U55 |
-| Stride-four convolution | `cortex_m.quantized_conv2d` | `Cortex-M quantized_conv2d` and `CMSIS:NN Lib` | Cortex-M55 with CMSIS-NN |
-| Quantized boundaries | `cortex_m.quantize_per_tensor` and `cortex_m.dequantize_per_tensor` | Matching Cortex-M operator components | Cortex-M55 |
-| Output selection | `aten.topk` | `Portable topk` | Cortex-M55 portable FP32 kernel |
+## Connect fallback to the CMSIS project
 
-The CMSIS project also needs the ExecuTorch runtime, kernel utilities, and
-operator registration components. You will inspect these components when you
-open the published pack.
+The PTE you have just produced by runnning the diagnostic exporter is not used by the final CMSIS project. It's simply an inspection result that proves the graph split. 
+The CMSIS-Executorch project uses `create_ai_layer.py` to export the model again, generate the final PTE, and select the source components required to execute it. 
+
+However, some patches have to be made. The project generator within that project currently handles Ethos-U delegation, but it does not lower the remaining convolution to Cortex-M or select CMSIS-NN. The focused
+integration patch makes four related changes:
+
+- It declares `ARM::CMSIS-NN@8.0.0` as a project pack.
+- It applies Cortex-M lowering after Ethos-U partitioning.
+- It maps explicit-layout names such as `quantized_conv2d_nhwc` to their Pack
+  component names.
+- It selects the CMSIS-NN library when the exported program contains a
+  CMSIS-NN-backed Cortex-M operator.
+
+Check and apply the patch, then inspect its small project diff:
+
+```console
+git apply --check enable_cortex_m_fallback.patch
+git apply enable_cortex_m_fallback.patch
+git diff -- cmsis-executorch-u55.csolution.yml create_ai_layer.py
+```
+
+No board, runner, or linker changes are needed.
+
+## Generate the target description
+
+If you opened a new terminal, initialize `vcpkg` and run
+`vcpkg-shell activate` again. Then resolve the declared packs and active target:
+
+```console
+cbuild setup cmsis-executorch-u55.csolution.yml --active SSE-300-U55 --packs
+```
+
+This one command installs missing packs through the public Pack index and
+writes three useful descriptions:
+
+- `cmsis-executorch-u55.cbuild-pack.yml` locks the resolved Pack versions.
+- `cmsis-executorch-u55.cbuild-mlops.yml` describes the Cortex-M55, Ethos-U55,
+  Vela settings, and destination AI layer.
+- `cmsis-executorch-u55.cbuild-idx.yml` indexes the resolved build context.
+
+You need `--packs` on a fresh checkout. There is no separate manual Pack
+download or `cpackget add` step.
+
+## Generate the AI layer
+
+Use the MLOps description to export the model and write its CMSIS AI layer:
+
+{{< tabpane code=true >}}
+  {{< tab header="Linux" language="bash">}}
+.venv/bin/python create_ai_layer.py cmsis-executorch-u55.cbuild-mlops.yml
+  {{< /tab >}}
+  {{< tab header="Windows PowerShell" language="powershell">}}
+.\.venv\Scripts\python.exe .\create_ai_layer.py .\cmsis-executorch-u55.cbuild-mlops.yml
+  {{< /tab >}}
+{{< /tabpane >}}
+
+The relevant final output is similar to:
+
+```output
+[ai_layer] 7608 byte program, operators: ['Cortex-M dequantize_per_tensor', 'Cortex-M quantize_per_tensor', 'Cortex-M quantized_conv2d', 'Cortex-M transpose', 'Portable topk']
+[ai_layer] wrote .../ai_layer/U55/ai_layer.clayer.yml
+```
+
+The generator writes the final `model.pte`, converts it to C data for the
+firmware, and records the runtime and operator components needed to execute it.
 
 ## What you've accomplished and what's next
 
-You have exported a program that distributes work across Ethos-U55,
-CMSIS-NN, and a portable FP32 kernel. The unsupported convolution does not need
-to fall back to a general FP32 implementation: it remains quantized and uses a
-CMSIS-NN-backed Cortex-M operator. This is designed to reduce the CPU cost of
-known unsupported NPU work, although performance must still be measured on the
-target device, including quantize and dequantize boundaries.
+You have produced a model-specific AI layer with one Ethos-U55 delegate, one
+CMSIS-NN-backed fallback convolution, and one portable operation. The split is
+decided ahead of time and stored in the ExecuTorch program.
 
-Next, you will download and inspect the published ExecuTorch CMSIS Pack that
-supplies these runtime, backend, and operator components.
+Next, you will inspect how the two published source Packs supply the code behind
+those graph targets.

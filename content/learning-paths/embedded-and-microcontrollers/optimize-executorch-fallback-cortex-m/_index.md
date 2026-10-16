@@ -1,28 +1,27 @@
 ---
-title: Deploy ML models across Cortex-M and Ethos-U with CMSIS-NN optimized kernels and the ExecuTorch CMSIS Pack
+title: Deploy ML models across Cortex-M and Ethos-U with CMSIS-NN fallback
 
-description: Build and run an ExecuTorch 1.4.0 application from the published ExecuTorch CMSIS Pack using Ethos-U, CMSIS-NN, and portable Cortex-M kernels.
+description: Build an ExecuTorch 1.5.1 application that delegates supported work to Ethos-U and uses CMSIS-NN for optimized Cortex-M fallback, demonstrated on Ethos-U55.
 
 minutes_to_complete: 60
 
-who_is_this_for: This is an introductory topic for embedded machine learning developers building ExecuTorch applications for Cortex-M CPUs and Ethos-U NPUs.
+who_is_this_for: This Learning Path is for embedded machine learning developers who want to understand and build an ExecuTorch application split across an Ethos-U NPU and Cortex-M CPU.
 
 learning_objectives:
-    - Export an ExecuTorch graph with Ethos-U, CMSIS-NN, and portable-kernel execution regions
-    - Lower quantized CPU fallback operations to optimized CMSIS-NN-backed Cortex-M operators, and understand the benefits in doing so
-    - Install and consume the published ExecuTorch CMSIS Pack for version 1.4.0 with selected runtime and operator components
-    - Run an application built from the ExecuTorch CMSIS Pack on a Corstone-300 Ethos-U55 FVP
-    - Understand when and why to use the ExecuTorch CMSIS Pack
+    - Explain how ExecuTorch assigns model operations to Ethos-U, CMSIS-NN-backed Cortex-M operators, and portable kernels
+    - Compare a Cortex-M baseline with a partially delegated Ethos-U program
+    - Generate a model-specific CMSIS AI layer from published software packs
+    - Build and run the mixed application on a Corstone-300 Ethos-U55 FVP
 
 prerequisites:
-    - An arm64 Linux computer with Docker and at least 30 GB of free storage; Ubuntu 24.04 LTS is a recommended option
-    - Python 3.12 with support for virtual environments
-    - Familiarity with PyTorch export and post-training quantization
-    - Familiarity with CMake and command-line development tools
-    - Awareness of Ethos-U NPU, and Cortex-M CPU
+    - A Windows or Linux computer with Git and Python 3.10 to 3.13
+    - An internet connection and command-line access
+    - Familiarity with PyTorch models and post-training quantization
+    - Basic familiarity with Cortex-M processors and Ethos-U NPUs
 
 author:
 - Matt Cossins
+- Kwashie Andoh
 
 generate_summary_faq: false
 rerun_summary: false
@@ -37,22 +36,21 @@ armips:
     - Ethos-U
 operatingsystems:
     - Linux
+    - Windows
 tools_software_languages:
     - Python
     - PyTorch
     - ExecuTorch
-    - CMake
     - CMSIS
     - CMSIS Pack
     - CMSIS-NN
-    - Docker
     - FVP
-    - GCC
+    - vcpkg
 
 further_reading:
     - resource:
-        title: ExecuTorch 1.4.0 release
-        link: https://github.com/pytorch/executorch/releases/tag/v1.4.0
+        title: CMSIS-Executorch example project
+        link: https://github.com/Arm-Examples/CMSIS-Executorch
         type: documentation
     - resource:
         title: Published ExecuTorch CMSIS Pack
@@ -63,13 +61,13 @@ further_reading:
         link: https://docs.pytorch.org/executorch/stable/backends/arm-cortex-m/arm-cortex-m-overview.html
         type: documentation
     - resource:
-        title: ExecuTorch Ethos-U with CMSIS-NN fallback example
-        link: https://github.com/pytorch/executorch/blob/v1.4.0/examples/arm/ethos_u_cmsis_nn_fallback_example.ipynb
+        title: ExecuTorch Arm Ethos-U backend
+        link: https://docs.pytorch.org/executorch/stable/backends-arm-ethos-u.html
         type: documentation
     - resource:
-        title: CMSIS-Toolbox install guide
-        link: /install-guides/cmsis-toolbox/
-        type: install_guide
+        title: CMSIS-Toolbox MLOps integration
+        link: https://open-cmsis-pack.github.io/cmsis-toolbox/build-overview/#mlops-information
+        type: documentation
     - resource:
         title: CMSIS-NN documentation
         link: https://arm-software.github.io/CMSIS-NN/latest/

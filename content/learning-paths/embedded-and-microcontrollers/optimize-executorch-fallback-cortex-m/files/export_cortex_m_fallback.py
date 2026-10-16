@@ -2,50 +2,27 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 from pathlib import Path
+import sys
 from typing import Any
 
 
-class ThreePathModel:
-    def __new__(cls) -> Any:
-        import torch
-
-        class Model(torch.nn.Module):
-            def __init__(self) -> None:
-                super().__init__()
-                self.conv1 = torch.nn.Conv2d(
-                    in_channels=3,
-                    out_channels=4,
-                    kernel_size=3,
-                    stride=1,
-                    padding=1,
-                    bias=False,
-                )
-                self.conv2 = torch.nn.Conv2d(
-                    in_channels=4,
-                    out_channels=1,
-                    kernel_size=3,
-                    stride=4,
-                    padding=1,
-                    bias=False,
-                )
-
-            def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-                values, _ = torch.topk(
-                    self.conv2(torch.relu(self.conv1(inputs))),
-                    k=1,
-                    dim=-1,
-                )
-                return values
-
-        return Model()
+def load_model_module(path: Path) -> Any:
+    spec = importlib.util.spec_from_file_location("lp_model", path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"Cannot load model from {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Export a Cortex-M baseline or a partially delegated Ethos-U55, "
+            "Export a Cortex-M baseline or a partially delegated Ethos-U, "
             "CMSIS-NN, and portable-kernel model."
         )
     )
@@ -53,7 +30,7 @@ def main() -> None:
         "--mode",
         choices=("cortex-m", "ethos-u-fallback"),
         required=True,
-        help="Select Cortex-M-only lowering or Ethos-U55 followed by Cortex-M lowering.",
+        help="Select Cortex-M-only lowering or Ethos-U followed by Cortex-M lowering.",
     )
     parser.add_argument(
         "--target",
@@ -65,6 +42,12 @@ def main() -> None:
         type=Path,
         default=Path("artifacts"),
         help="Directory for the bundled program and graph summary.",
+    )
+    parser.add_argument(
+        "--model-file",
+        type=Path,
+        default=Path("model/model.py"),
+        help="Model module providing get_model() and get_calibration_inputs().",
     )
     args = parser.parse_args()
 
@@ -81,14 +64,12 @@ def main() -> None:
     from executorch.extension.export_util.utils import save_pte_program
     from torchao.quantization.pt2e.quantize_pt2e import convert_pt2e, prepare_pt2e
 
-    torch.manual_seed(0)
-    model = ThreePathModel().eval().to(memory_format=torch.channels_last)
-    example_inputs = (
-        torch.ones(1, 3, 8, 8, dtype=torch.float32).to(
-            memory_format=torch.channels_last
-        ),
-    )
+    model_module = load_model_module(args.model_file.resolve())
+    model = model_module.get_model()
+    calibration_inputs = model_module.get_calibration_inputs()
+    example_inputs = (calibration_inputs[0],)
     exported_program = torch.export.export(model, example_inputs)
+    captured_graph = exported_program.module(check_guards=False)
 
     if args.mode == "cortex-m":
         from executorch.backends.cortex_m.quantizer.quantizer import CortexMQuantizer
@@ -105,8 +86,9 @@ def main() -> None:
         quantizer = EthosUQuantizer(compile_spec)
         quantizer.set_global(get_symmetric_quantization_config(is_per_channel=True))
 
-    prepared = prepare_pt2e(exported_program.module(), quantizer)
-    prepared(*example_inputs)
+    prepared = prepare_pt2e(captured_graph, quantizer)
+    for calibration_input in calibration_inputs:
+        prepared(calibration_input)
     quantized_model = convert_pt2e(prepared)
     quantized_exported_program = torch.export.export(quantized_model, example_inputs)
     reference_output = quantized_exported_program.module()(*example_inputs)
@@ -130,7 +112,7 @@ def main() -> None:
     )
 
     edge_program_manager._edge_programs["forward"] = CortexMPassManager(
-        edge_program_manager.exported_program()
+        edge_program_manager.exported_program(), use_explicit_layout=True
     ).transform()
 
     targets_after_cortex_m = count_targets(
