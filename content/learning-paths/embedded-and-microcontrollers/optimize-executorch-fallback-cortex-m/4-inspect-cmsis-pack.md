@@ -1,97 +1,113 @@
 ---
-title: Inspect the published ExecuTorch CMSIS Pack
+title: Inspect the generated CMSIS Pack selection
 weight: 5
-description: Download the published ExecuTorch 1.4.0 CMSIS Pack and inspect the runtime, backend, and operator components used by the model.
+description: Trace the mixed ExecuTorch graph to versioned runtime, backend, operator, and CMSIS-NN source components.
 
 ### FIXED, DO NOT MODIFY
 layout: learningpathall
 ---
 
-## Understand the ExecuTorch CMSIS Pack benefits
+## See which Packs were resolved
 
-The ExecuTorch CMSIS Pack is a source pack rather than a prebuilt runtime
-library. It supplies the ExecuTorch runtime, registration code, backends, and
-operators as selectable CMSIS components.
+CMSIS-Toolbox has already acquired the software Packs needed by the project.
+Inspect the generated Pack lock:
 
-A `.pack` file is a ZIP-compatible archive. Its Pack Description file, or
-PDSC, records component names, source files, dependencies, versions, and
-conditions. CMSIS-Toolbox reads this metadata to turn component selections in a
-project into a concrete build.
+{{< tabpane code=true >}}
+  {{< tab header="Linux" language="bash">}}
+cat cmsis-executorch-u55.cbuild-pack.yml
+  {{< /tab >}}
+  {{< tab header="Windows PowerShell" language="powershell">}}
+Get-Content .\cmsis-executorch-u55.cbuild-pack.yml
+  {{< /tab >}}
+{{< /tabpane >}}
 
-A CMSIS project can select only the components required by its lowered graph
-instead of maintaining one large source list. The selected source files then
-compile with the application's target compiler and options.
+Among the resolved entries, you can see the two Packs responsible for the
+mixed model:
 
-The published pack also gives CMSIS-Toolbox and Keil Studio a versioned package
-identifier: `PyTorch::ExecuTorch@1.4.0`. This allows the tools to download the
-same package, resolve its dependencies, expose its components in an IDE, and
-record the selected version without a local pack-building stage.
-
-## Download the published pack
-
-Download the pack attached to the ExecuTorch `1.4.0` release:
-
-```bash
-source ~/executorch-cmsis-lp/env.sh
-
-PACK_DIR="$LP_WORKSPACE/packs"
-PACK_FILE="$PACK_DIR/PyTorch.ExecuTorch.1.4.0.pack"
-
-mkdir -p "$PACK_DIR"
-
-curl --location --fail \
-  --output "$PACK_FILE" \
-  https://github.com/pytorch/executorch/releases/download/v1.4.0/PyTorch.ExecuTorch.1.4.0.pack
-
-unzip -t "$PACK_FILE" >/dev/null && \
-  echo "ExecuTorch CMSIS Pack archive passed"
+```yaml
+- resolved-pack: ARM::CMSIS-NN@8.0.0
+- resolved-pack: PyTorch::ExecuTorch@1.5.1
 ```
 
-The expected final output is:
+They have different responsibilities:
 
-```output
-ExecuTorch CMSIS Pack archive passed
+- `PyTorch::ExecuTorch@1.5.1` supplies the ExecuTorch runtime, Ethos-U backend,
+  Cortex-M operator wrappers, registration code, and portable operators.
+- `ARM::CMSIS-NN@8.0.0` supplies the optimized neural-network kernels called by
+  the Cortex-M convolution wrapper.
+
+The Pack lock records exact resolved versions so later builds don't silently
+move to newer installed Packs.
+
+## Understand what a source Pack provides
+
+The ExecuTorch CMSIS Pack is a *source Pack*, not a prebuilt runtime library.
+Its Pack Description file lists named components, their source files, their
+dependencies, and the conditions under which they can be selected.
+
+CMSIS-Toolbox uses that metadata to add only the chosen components to the
+application build. Arm Compiler then compiles those sources for the Cortex-M55
+target with the rest of the project. This is why one published Pack can support
+different CMSIS projects without shipping a separate binary runtime for every
+target configuration.
+
+`cbuild setup --packs` stores each installed Pack under the CMSIS Pack root in
+a vendor, name, and version hierarchy. Both `cbuild` and other CMSIS tools can
+then resolve `PyTorch::ExecuTorch@1.5.1` by its package identity. Manually
+downloading the same archive with `curl` would create an unrelated second copy
+and wouldn't improve the build.
+
+## Trace the graph into the AI layer
+
+Open the AI layer generated from the `.pte` operator list:
+
+{{< tabpane code=true >}}
+  {{< tab header="Linux" language="bash">}}
+cat ai_layer/U55/ai_layer.clayer.yml
+  {{< /tab >}}
+  {{< tab header="Windows PowerShell" language="powershell">}}
+Get-Content .\ai_layer\U55\ai_layer.clayer.yml
+  {{< /tab >}}
+{{< /tabpane >}}
+
+Its component list includes:
+
+```yaml
+components:
+  - component: Machine Learning:ExecuTorch:Runtime
+  - component: Machine Learning:ExecuTorch:Kernel Utils
+  - component: Machine Learning:ExecuTorch:Kernel Registration
+  - component: Machine Learning:ExecuTorch:Backend EthosU
+  - component: Machine Learning:ExecuTorch Operators:Cortex-M dequantize_per_tensor
+  - component: Machine Learning:ExecuTorch Operators:Cortex-M quantize_per_tensor
+  - component: Machine Learning:ExecuTorch Operators:Cortex-M quantized_conv2d
+  - component: Machine Learning:ExecuTorch Operators:Cortex-M transpose
+  - component: Machine Learning:ExecuTorch Operators:Portable topk
+  - component: ARM::CMSIS:NN Lib
 ```
 
-This copy is used only to inspect the archive and its component metadata. The
-final build installs the same pack through the public pack index into a clean
-pack root. That separate installation checks the normal CMSIS dependency and
-component-resolution workflow.
+This file is the handover between model export and firmware build:
 
-## Inspect the components used by the model
+| Export result | Selected component |
+| --- | --- |
+| Ethos-U delegate | `Backend EthosU` |
+| Cortex-M convolution | `Cortex-M quantized_conv2d` and `ARM::CMSIS:NN Lib` |
+| Quantized boundaries and layout changes | Matching Cortex-M components |
+| Portable `topk` | `Portable topk` |
 
-Display the PDSC components that correspond to the partially delegated graph:
+The runtime, kernel utilities, and registration components provide the common
+machinery needed to load the `.pte` and dispatch its operators.
 
-```bash
-unzip -p "$PACK_FILE" PyTorch.ExecuTorch.pdsc | \
-grep '<component ' | \
-grep -E 'Csub="(Runtime|Kernel Utils|Kernel Registration|Backend EthosU|Cortex-M (quantize_per_tensor|dequantize_per_tensor|quantized_conv2d)|Portable topk)"' | \
-sed -E 's/.*Csub="([^"]+)".*Cversion="([^"]+)".*/\1 \2/'
-```
+You will also see `ARM_NN_ENABLE_F32` and `ARM_NN_ENABLE_F16` definitions in
+the generated layer. CMSIS-NN 8.0.0 needs them because its Pack component
+compiles optional floating-point source files. The fallback convolution in
+this model remains INT8; these definitions don't change its data type.
 
-The output includes:
+## What you've learned and what's next
 
-```output
-Runtime 1.4.0
-Kernel Utils 1.4.0
-Kernel Registration 1.4.0
-Portable topk 1.4.0
-Cortex-M dequantize_per_tensor 1.4.0
-Cortex-M quantize_per_tensor 1.4.0
-Cortex-M quantized_conv2d 1.4.0
-Backend EthosU 1.4.0
-```
+You have followed graph targets into two versioned source Packs and a concrete
+component list. Pack acquisition, dependency resolution, and component
+selection are now one connected workflow rather than separate downloads.
 
-The pack contains the exact runtime, Ethos-U backend, CMSIS-NN-backed Cortex-M
-operators, and portable operator needed by this model. The next page selects
-these components in a CMSIS project. This graph-to-component mapping is the
-main integration benefit: the exported targets tell you what the embedded build
-must include.
-
-## What you've accomplished and what's next
-
-You have downloaded the published ExecuTorch CMSIS Pack and matched its
-components to the lowered graph.
-
-Next, you will prepare a Corstone-300 project that selects these components and
-embeds the exported model.
+Next, you will see how the reusable CMSIS project combines this generated AI
+layer with the Corstone-300 board and application layers.

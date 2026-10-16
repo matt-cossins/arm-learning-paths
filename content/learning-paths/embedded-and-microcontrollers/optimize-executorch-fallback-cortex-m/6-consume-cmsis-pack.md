@@ -1,158 +1,121 @@
 ---
-title: Build and run the ExecuTorch CMSIS Pack application
+title: Build and run the mixed application
 weight: 7
-description: Build a Corstone-300 executable from ExecuTorch, CMSIS-NN, and Ethos-U CMSIS components, then run the model on an Ethos-U55 FVP.
+description: Compile the selected Pack sources, verify their provenance, and run the application on the Corstone-300 Ethos-U55 FVP.
 
 ### FIXED, DO NOT MODIFY
 layout: learningpathall
 ---
 
-## Build the executable from ExecuTorch CMSIS Pack components
+## Build the application
 
-Build the application in the arm64 AVH-MLOps container. The command:
+Make sure the `vcpkg` tools are active in your current terminal, then build the
+U55 target from the repository root:
 
-- Mounts the ExecuTorch checkout as a read-only input.
-- Activates the CMSIS-Toolbox utilities supplied by the container.
-- Installs `PyTorch::ExecuTorch@1.4.0` from the pack index into a clean pack root.
-- Runs `cbuild` for the Corstone-300 release context.
-
-The temporary `CMSIS_PACK_ROOT` is intentionally empty at the start. A
-successful build therefore shows that the project can resolve its declared
-packs, rather than relying on packages left by an earlier build.
-
-```bash
-source ~/executorch-cmsis-lp/env.sh
-cd "$RUNNER_DIR"
-
-DOCKER_IMAGE="ghcr.io/arm-software/avh-mlops/arm-mlops-docker-licensed-community:latest-arm64"
-
-chmod a+rwx "$RUNNER_DIR"
-
-docker run --rm \
-  -v "$RUNNER_DIR:/workspace" \
-  -v "$ET_ROOT:/workspace/executorch:ro" \
-  "$DOCKER_IMAGE" \
-  bash -lc '
-set -euo pipefail
-cd /workspace
-
-export Z_VCPKG_POSTSCRIPT="$(mktemp /tmp/vcpkg.XXXXXX.sh)"
-vcpkg activate
-source "$Z_VCPKG_POSTSCRIPT"
-
-export CMSIS_PACK_ROOT=/tmp/cmsis-pack-root
-cpackget init https://www.keil.com/pack/index.pidx
-cpackget add --agree-embedded-license PyTorch::ExecuTorch@1.4.0
-
-cbuild pack_runner.csolution.yml \
-  --packs \
-  --update-rte \
-  --context pack_runner.Release+Corstone-300
-'
+```console
+cbuild cmsis-executorch-u55.csolution.yml --active SSE-300-U55
 ```
 
-In the command, `cpackget init` configures the public pack index and
-`cpackget add` installs the selected ExecuTorch pack. `cbuild --packs` resolves
-declared pack dependencies, `--update-rte` regenerates the run-time environment
-files, and `--context` selects the project, build type, and target combination
-defined by the solution.
-
-{{% notice Note %}}
-The generated `pack_runner.csolution.yml` and `pack_runner.cproject.yml` files
-can also be opened with the Arm CMSIS Solution extension included in the
-[Arm Keil Studio Pack](https://marketplace.visualstudio.com/items?itemName=Arm.keil-studio-pack)
-for Visual Studio Code. Use the graphical view to inspect the selected target,
-build context, packs, and software components.
-{{% /notice %}}
-
-The first build downloads the arm64 AVH-MLOps container, CMSIS-Toolbox compiler
-tools, the ExecuTorch CMSIS Pack, and its dependent packs. The final build
-summary is:
+CMSIS-Toolbox combines the App, Board, and AI layers, resolves their selected
+components, and invokes Arm Compiler for Embedded. The final output includes:
 
 ```output
 Build summary: 1 succeeded, 0 failed
 ```
 
-{{% notice Note %}}
-GNU `ld` can print allocation warnings for the Corstone multi-segment linker
-script before the successful build summary. The generated ELF is validated in
-the next section on the FVP.
-{{% /notice %}}
-
-The executable is written to:
+The generated images are written under:
 
 ```text
-$RUNNER_DIR/out/pack_runner/Corstone-300/Release/pack_runner.elf
+out/cmsis-executorch/SSE-300-U55/Debug/
 ```
 
-## Confirm that the build used the pack
+The `.axf` file contains the linked executable and debug information. The
+`.hex` file contains the image loaded into the FVP.
 
-Run the verification helper against the generated compilation database. It
-checks that the runtime, CMSIS-NN-backed Cortex-M operator, Ethos-U backend, and
-portable `topk` sources came from the installed pack:
+## Verify the compiled source paths
 
-```bash
-COMPILE_DB=out/pack_runner/Corstone-300/Release/compile_commands.json
-python verify_pack_sources.py "$COMPILE_DB"
-```
+A successful build proves that an image was produced, but it doesn't by itself
+show which implementation supplied each operation. Run the verification helper
+against the compilation database:
+
+{{< tabpane code=true >}}
+  {{< tab header="Linux" language="bash">}}
+.venv/bin/python verify_pack_sources.py \
+  out/cmsis-executorch/SSE-300-U55/Debug/compile_commands.json
+  {{< /tab >}}
+  {{< tab header="Windows PowerShell" language="powershell">}}
+.\.venv\Scripts\python.exe .\verify_pack_sources.py `
+  .\out\cmsis-executorch\SSE-300-U55\Debug\compile_commands.json
+  {{< /tab >}}
+{{< /tabpane >}}
 
 The expected output is:
 
 ```output
-PASS: ExecuTorch runtime came from the ExecuTorch CMSIS Pack
-PASS: CMSIS-NN Cortex-M convolution came from the ExecuTorch CMSIS Pack
-PASS: Ethos-U backend came from the ExecuTorch CMSIS Pack
-PASS: Portable topk came from the ExecuTorch CMSIS Pack
+PASS: ExecuTorch runtime was compiled from its declared CMSIS Pack
+PASS: ExecuTorch Cortex-M convolution wrapper was compiled from its declared CMSIS Pack
+PASS: CMSIS-NN convolution kernel was compiled from its declared CMSIS Pack
+PASS: Ethos-U backend was compiled from its declared CMSIS Pack
+PASS: ExecuTorch portable topk kernel was compiled from its declared CMSIS Pack
 ```
 
-Each `PASS` confirms that one required ExecuTorch source file appears in the
-compilation database under the installed pack path. The application
-and Corstone platform sources come from the ExecuTorch checkout. A
-successful build confirms that an ELF was produced; this additional check
-confirms that the selected ExecuTorch components were resolved from the pack.
+These checks distinguish the two layers of the optimized fallback. The
+ExecuTorch Pack provides the `quantized_conv2d` wrapper, while the CMSIS-NN
+Pack provides the convolution implementation that wrapper calls.
 
-## Run the pack-built model on the FVP
+Together with `cmsis-executorch-u55.cbuild-pack.yml`, the compilation database
+shows both the resolved Pack versions and the source files actually compiled.
 
-Run the `cbuild` output on the Corstone-300 Ethos-U55 FVP:
+## Run the image on the FVP
 
-```bash
-source "$ET_ROOT/examples/arm/arm-scratch/setup_path.sh"
+Start the Corstone-300 model and load the generated HEX image:
 
-"$ET_ROOT/backends/arm/scripts/run_fvp.sh" \
-  --elf="$RUNNER_DIR/out/pack_runner/Corstone-300/Release/pack_runner.elf" \
-  --target=ethos-u55-128
+```console
+FVP_Corstone_SSE-300_Ethos-U55 -f board/Corstone-300/fvp_config.txt --simlimit 60 -a cpu0=out/cmsis-executorch/SSE-300-U55/Debug/cmsis-executorch.hex
 ```
 
 The relevant output is:
 
 ```output
-PTE Model data loaded. Size: 5476 bytes.
-NPU delegations: 1 (1.00 per inference)
-Output[0][0]: (float) 0.030337
-Output[0][1]: (float) -0.034964
-Program complete, exiting.
-No problems found!
+Ethos-U version info:
+        Arch:       v1.1.0
+        MACs/cc:    128
+        Cmd stream: v0
+ExecuTorch Ethos-U example: 7608 byte model
+Output: 10 element(s): 0.0532 -0.0239 0.0541 0.1064 0.0706 0.0395 0.0881 0.1340 0.0807 0.0064
+Test_result: PASS
 ```
+{{% notice Note %}}
+On Windows, the FVP can print warnings that `python3.dll` is unavailable and
+that the VIO or VSI bridges are disabled. This headless example doesn't use
+those bridges. If the run reaches `Test_result: PASS`, inference completed
+successfully.
+{{% /notice %}}
 
-The graph summary from the export step identifies the stride-four convolution
-as `cortex_m.quantized_conv2d` and `topk` as portable. The compilation database
-shows that the matching Cortex-M and portable sources came from the ExecuTorch
-CMSIS Pack. The FVP output confirms that the complete pack-built application
-loaded and ran the same partially delegated program with one Ethos-U delegation.
+
+
+The FVP result proves functional execution, not physical-device latency or
+power. Measure the complete graph on your target hardware before drawing
+performance conclusions because delegation boundaries and tensor conversions
+also have a cost.
 
 ## What you've accomplished
 
-You have run an ExecuTorch model built from the ExecuTorch CMSIS Pack on a
-Corstone-300 system. The application delegates the supported convolution to
-Ethos-U55, executes the unsupported stride-four convolution through the
-CMSIS-NN-backed Cortex-M operator, and finishes with a portable FP32 operator.
+You have built and run one ExecuTorch program across three execution paths:
 
-CMSIS-NN provides the optimized CPU implementation for the quantized fallback
-convolution. The ExecuTorch CMSIS Pack provides versioned, component-based
-integration for the matching runtime, backend, and operator sources. The clean
-CMSIS build and compilation-database checks make that software composition
-visible and repeatable.
+- The supported convolution runs in an Ethos-U55 delegate.
+- The unsupported stride-four convolution runs on Cortex-M55 through the
+  ExecuTorch wrapper and optimized CMSIS-NN kernel.
+- `topk` runs through the portable ExecuTorch CPU kernel.
 
-For another model, inspect its lowered graph, select the matching components
-from the ExecuTorch CMSIS Pack, regenerate `model_pte.h`, and rebuild the CMSIS
-project.
+You also verified the implementation rather than inferring it from a successful
+run. The exported graph shows ownership, the compilation database shows the
+compiled Pack sources, and the FVP confirms that the combined firmware runs.
+
+This build uses U55 to make one unsupported convolution predictable. The same
+Pack workflow applies to another Ethos-U target when its delegated graph leaves
+operations for Cortex-M execution.
+
+To adapt the project, replace `model/model.py`, provide representative
+calibration inputs, preserve or update the runner's tensor interface, and
+regenerate the AI layer before rebuilding.
